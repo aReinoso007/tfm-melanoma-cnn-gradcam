@@ -4,7 +4,7 @@
 # Los valores marcados como "propuesta" deben confirmarse con una prueba en sandbox.
 
 mlflow:
-  repo_owner: "<owner>"                     # usuario u organización en DagsHub
+  repo_owner: "aReinoso007"                 # usuario u organización en DagsHub
   repo_name: "tfm-melanoma-cnn-gradcam"
   experiments:
     m1: "m1-datos"

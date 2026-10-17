@@ -44,7 +44,7 @@ from google.colab import drive
 drive.mount('/content/drive')
 
 # 2. Clonar el repo y entrar
-!git clone https://github.com/<owner>/tfm-melanoma-cnn-gradcam.git
+!git clone https://github.com/aReinoso007/tfm-melanoma-cnn-gradcam.git
 %cd tfm-melanoma-cnn-gradcam
 !pip install -q -r requirements.txt
 
