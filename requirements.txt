@@ -1,0 +1,12 @@
+# TensorFlow ya viene instalado en Colab: no se fija aquí para no romper la versión con soporte de GPU.
+# Registrar la versión usada con tf.__version__ en cada run.
+mlflow>=3.0,<4.0
+dagshub
+pyyaml
+scikit-learn
+pandas
+numpy
+matplotlib
+seaborn
+opencv-python-headless
+nbstripout

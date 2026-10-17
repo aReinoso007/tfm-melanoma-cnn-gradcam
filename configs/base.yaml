@@ -1,0 +1,80 @@
+# Configuración común del TFM.
+# Cualquier cambio en este archivo modifica las condiciones experimentales:
+# requiere PR aprobado por los tres integrantes.
+# Los valores marcados como "propuesta" deben confirmarse con una prueba en sandbox.
+
+mlflow:
+  repo_owner: "<owner>"                     # usuario u organización en DagsHub
+  repo_name: "tfm-melanoma-cnn-gradcam"
+  experiments:
+    m1: "m1-datos"
+    m2_train: "m2-entrenamiento"
+    m2_test: "m2-evaluacion-test"
+    m3: "m3-gradcam"
+    sandbox: "sandbox"
+
+paths:
+  drive_root: "/content/drive/MyDrive/TFM"
+  dataset_zip: "/content/drive/MyDrive/TFM/data/HAM10000.zip"   # copia en Drive (lenta de leer)
+  local_data_dir: "/content/data/HAM10000"                      # se descomprime aquí en cada sesión
+  images_dir: "/content/data/HAM10000/images"
+  metadata_csv: "/content/data/HAM10000/HAM10000_metadata.csv"
+  checkpoints_dir: "/content/drive/MyDrive/TFM/checkpoints"     # sobrevive a desconexiones
+  split_csv: "data/splits/split_v1.csv"
+
+data:
+  classes: ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"]
+  positive_class: "mel"
+  split_version: "v1"
+  split_seed: 42
+  proportions: {train: 0.70, val: 0.15, test: 0.15}
+  img_size: 224
+  augmentation:                              # solo entrenamiento, clases minoritarias (propuesta)
+    apply_to: ["akiec", "bcc", "bkl", "df", "mel", "vasc"]
+    horizontal_flip: true
+    vertical_flip: true
+    rotation_factor: 0.25
+    zoom_factor: 0.1
+    brightness_delta: 0.1
+    contrast_factor: 0.1
+  class_weighting: "balanced"
+
+training:
+  seeds: [42, 123, 2024]
+  architectures: ["resnet50", "densenet121", "efficientnetb0"]
+  batch_size: 32                             # propuesta
+  dropout: 0.3                               # propuesta
+  optimizer: "adam"
+  early_stopping:
+    monitor: "val_loss"
+    patience: 5
+  phase1:                                    # base congelada
+    lr: 1.0e-3                               # propuesta
+    epochs: 15
+  phase2:                                    # descongelado progresivo
+    lr: 1.0e-5                               # propuesta
+    epochs: 30
+    unfreeze_fraction: 0.3                   # fracción superior de la base que se descongela (propuesta)
+    freeze_batchnorm: true
+
+selection:                                   # regla de selección (validación, media de 3 semillas)
+  mel_sensitivity_min: 0.80
+  per_class_sensitivity_min: 0.50
+  primary_metric: "val_macro_f1"
+  tiebreak_metric: "val_balanced_accuracy"
+  fallback_metric: "val_mel_sensitivity"
+
+evaluation:
+  bootstrap:
+    enabled: false                           # opcional, si hay tiempo
+    n_resamples: 1000
+    group_by: "lesion_id"
+    ci: 0.95
+
+gradcam:
+  last_conv_layer:
+    resnet50: "conv5_block3_out"
+    densenet121: "relu"
+    efficientnetb0: "top_activation"
+  samples_per_class: {correct: 10, incorrect: 10}
+  sampling_seed: 42
