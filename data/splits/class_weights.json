@@ -1,0 +1,66 @@
+{
+  "split_version": "v1",
+  "split_sha256": "98485423d758cae1ed8b7adf64c3e92d31a6afd4d48de7a26e89355238e34b38",
+  "calculado_con": "solo train",
+  "clases": [
+    "akiec",
+    "bcc",
+    "bkl",
+    "df",
+    "mel",
+    "nv",
+    "vasc"
+  ],
+  "n_train": {
+    "akiec": 228,
+    "bcc": 359,
+    "bkl": 769,
+    "df": 80,
+    "mel": 779,
+    "nv": 4694,
+    "vasc": 100
+  },
+  "prior_train": {
+    "akiec": 0.03253,
+    "bcc": 0.05122,
+    "bkl": 0.109716,
+    "df": 0.011414,
+    "mel": 0.111143,
+    "nv": 0.66971,
+    "vasc": 0.014267
+  },
+  "balanced": {
+    "akiec": 4.391604,
+    "bcc": 2.789097,
+    "bkl": 1.302062,
+    "df": 12.516071,
+    "mel": 1.285348,
+    "nv": 0.213312,
+    "vasc": 10.012857
+  },
+  "sqrt": {
+    "akiec": 2.620346,
+    "bcc": 2.088233,
+    "bkl": 1.426799,
+    "df": 4.423654,
+    "mel": 1.417612,
+    "nv": 0.577503,
+    "vasc": 3.956636
+  },
+  "recomendada": "sqrt",
+  "keras_class_weight": {
+    "0": 2.620346,
+    "1": 2.088233,
+    "2": 1.426799,
+    "3": 4.423654,
+    "4": 1.417612,
+    "5": 0.577503,
+    "6": 3.956636
+  },
+  "notas": [
+    "keras_class_weight: claves = índice de clase en el orden de 'clases'. Convertir a int: {int(k): v for k, v in d.items()}.",
+    "sqrt está normalizada: el peso medio por imagen de train es 1 (igual que balanced).",
+    "Con pesos, las probabilidades del modelo ya no reflejan la frecuencia real de las clases. Corrección aproximada: p_corregida_k ∝ p_modelo_k / peso_k, renormalizando para que sumen 1.",
+    "No combinar con sobremuestreo (compensaría dos veces)."
+  ]
+}
