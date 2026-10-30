@@ -2,6 +2,7 @@
 # Cualquier cambio en este archivo modifica las condiciones experimentales:
 # requiere PR aprobado por los tres integrantes.
 # Los valores marcados como "propuesta" deben confirmarse con una prueba en sandbox.
+# La sección data la fija el Módulo 1 (decisiones y evidencia en su registro de decisiones).
 
 mlflow:
   repo_owner: "aReinoso007"                 # usuario u organización en DagsHub
@@ -29,15 +30,23 @@ data:
   split_seed: 42
   proportions: {train: 0.70, val: 0.15, test: 0.15}
   img_size: 224
-  augmentation:                              # solo entrenamiento, clases minoritarias (propuesta)
-    apply_to: ["akiec", "bcc", "bkl", "df", "mel", "vasc"]
+  preprocessing:                             # Módulo 1, Etapa 7 (src/data.py)
+    crop: "center"                           # 600×450 -> 450×450 (75 px por lado); conserva la forma (criterio A)
+    resize_method: "area"                    # 450×450 -> 224×224
+    cache: "memoria_uint8"
+  augmentation:                              # solo entrenamiento (Módulo 1, Etapa 6; src/augmentation.py)
+    apply_to: ["akiec", "bcc", "bkl", "df", "mel", "vasc"]   # aumento completo
     horizontal_flip: true
     vertical_flip: true
-    rotation_factor: 0.25
-    zoom_factor: 0.1
+    rotation_factor: 0.25                    # ±90°; con los volteos cubre los 360°
+    zoom_factor: 0.1                         # solo acercar: lado 90–100 %
     brightness_delta: 0.1
     contrast_factor: 0.1
-  class_weighting: "balanced"
+    fill_mode: "REFLECT"                     # relleno al rotar; el negro imitaría la viñeta del dermatoscopio
+  light_augmentation:                        # clases fuera de apply_to: solo volteos
+    classes: ["nv"]
+    transforms: ["horizontal_flip", "vertical_flip"]
+  class_weighting: "sqrt"                    # pesos suavizados normalizados a peso medio 1 (data/splits/class_weights.json)
 
 training:
   seeds: [42, 123, 2024]
