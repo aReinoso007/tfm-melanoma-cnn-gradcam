@@ -10,11 +10,20 @@ constantes, split o preprocesamiento debe acordarse en grupo y versionarse
 
 Secciones y responsable principal:
   1. Constantes y rutas ............................ común
-  2. Datos: descarga, redimensionado, split ........ Módulo 1
-  3. Pipeline tf.data y augmentation ............... Módulo 1
+  2. Datos: descarga, redimensionado, split ........ Módulo 1 (OBSOLETA: ver abajo)
+  3. Pipeline tf.data y augmentation ............... Módulo 1 (OBSOLETA: ver abajo)
   4. Modelos y congelado de capas .................. Módulo 2
   5. Métricas ...................................... Módulo 2
   6. Utilidades (semillas, JSON, MLflow, gráficos).. común
+
+IMPORTANTE (acuerdo del grupo, octubre de 2026): los datos de los Módulos 2 y 3 se
+cargan SOLO con el código del Módulo 1, que es el contrato M1 -> M2 de
+docs/02_flujo_de_trabajo.md:
+    from src.data import make_dataset, split_df, load_class_weights
+    split oficial: data/splits/split_v1.csv · pesos: data/splits/class_weights.json
+Las secciones 2 y 3 de este archivo no siguen las decisiones del Módulo 1 (aplastan
+la imagen a cuadrado, cambian tono y saturación, no normalizan los pesos suavizados
+y regeneran el split), así que no deben usarse para entrenar ni evaluar.
 """
 from __future__ import annotations
 
@@ -57,7 +66,7 @@ SPLIT_VERSION = "v1"
 SPLIT_SEED = 42
 SPLIT_N_FOLDS = 20               # 20 folds de ~5 % -> 3 test, 3 val, 14 train = 15/15/70
 
-SEEDS = [42, 123, 2026]
+SEEDS = [42, 123, 2024]          # = training.seeds de configs/base.yaml
 ARCHS = ["resnet50", "densenet121", "efficientnetb0"]
 MIN_MEL_SENSITIVITY = 0.80       # requisito mínimo de selección (validación)
 
@@ -78,7 +87,15 @@ UNFREEZE_STAGES = {
 KAGGLE_DATASET = "kmader/skin-cancer-mnist-ham10000"
 DAGSHUB_OWNER = "aReinoso007"
 DAGSHUB_REPO = "tfm-melanoma-cnn-gradcam"
-MLFLOW_EXPERIMENT = "ham10000-cnn-comparativa"
+# Nombres de experimentos = mlflow.experiments de configs/base.yaml (docs/03_mlflow_convenciones.md)
+MLFLOW_EXPERIMENTS = {
+    "m1": "m1-datos",
+    "m2_train": "m2-entrenamiento",
+    "m2_test": "m2-evaluacion-test",
+    "m3": "m3-gradcam",
+    "sandbox": "sandbox",
+}
+MLFLOW_EXPERIMENT = MLFLOW_EXPERIMENTS["m2_train"]    # el experimento principal del Módulo 2
 
 
 def get_paths(drive_root: str = "/content/drive/MyDrive/TFM",
@@ -107,6 +124,7 @@ def get_paths(drive_root: str = "/content/drive/MyDrive/TFM",
 
 # =============================================================================
 # 2. DATOS: DESCARGA, REDIMENSIONADO Y SPLIT  (Módulo 1)
+#    OBSOLETA: usar data/splits/split_v1.csv y src/data.py (split_df, load_class_weights)
 # =============================================================================
 def download_ham10000():
     """Descarga HAM10000 desde Kaggle con kagglehub.
@@ -229,6 +247,7 @@ def oversample(train_df: pd.DataFrame, factors: dict | None, seed: int = 42) -> 
 
 # =============================================================================
 # 3. PIPELINE tf.data Y AUGMENTATION  (Módulo 1)
+#    OBSOLETA: usar src/data.py (make_dataset) y src/augmentation.py
 # =============================================================================
 _CAFFE_MEAN = [103.939, 116.779, 123.68]
 _TORCH_MEAN = [0.485, 0.456, 0.406]
@@ -485,9 +504,12 @@ def load_json(path):
         return json.load(f)
 
 
-def init_mlflow(experiment: str = MLFLOW_EXPERIMENT):
+def init_mlflow(experiment: str = MLFLOW_EXPERIMENTS["sandbox"]):
     """Conecta MLflow al servidor de DagsHub. Token en el secreto de Colab
-    'DAGSHUB_TOKEN' (panel de la llave a la izquierda)."""
+    'DAGSHUB_TOKEN' (panel de la llave a la izquierda).
+
+    `experiment`: uno de MLFLOW_EXPERIMENTS (p. ej. MLFLOW_EXPERIMENTS["m3"]).
+    Sin argumento va a "sandbox", que nunca se cita en la memoria."""
     import dagshub
     import mlflow
     try:

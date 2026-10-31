@@ -29,6 +29,9 @@ tfm-melanoma-cnn-gradcam/
 ├── docs/                    # objetivos, flujo de trabajo y guías por módulo
 ├── notebooks/               # un notebook por paso, con prefijo de módulo (m1_, m2_, m3_)
 ├── src/
+│   ├── data.py              # Módulo 1: make_dataset(), split_df(), load_class_weights()
+│   ├── augmentation.py      # Módulo 1: aumento selectivo (solo train)
+│   ├── tfm_common.py        # modelos y métricas (M2); sus secciones 2-3 de datos están obsoletas
 │   └── tracking.py          # utilidades comunes: MLflow, semillas, hashes, tags
 ├── requirements.txt
 └── .gitignore
