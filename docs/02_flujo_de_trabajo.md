@@ -72,9 +72,25 @@ Lo que cada módulo entrega al siguiente. Si un contrato cambia, se avisa al gru
 |---|---|---|
 | M1 → M2 | Partición fija | `data/splits/split_v1.csv` con columnas `image_id, lesion_id, dx, split` |
 | M1 → M2 | Pesos de clase | `class_weights.json` (calculados solo con entrenamiento) |
-| M1 → M2 | Carga de datos | `make_dataset(split, arch, training)` en `src/` |
+| M1 → M2 | Carga de datos | `make_dataset(split, arch, training)` en `src/data.py` (aumento en `src/augmentation.py`) |
 | M2 → M3 | Modelos finales | Registro MLflow: `ham10000-<arch>` con alias `final` |
 | M2 → M3 | Predicciones de prueba | `predicciones_test.csv` con `image_id, lesion_id, y_true, y_pred, p_akiec … p_vasc` |
+
+**Regla (acuerdo del grupo, octubre de 2026):** los Módulos 2 y 3 cargan los datos **solo** con el código del Módulo 1 y no lo reimplementan:
+
+```python
+from src.data import make_dataset, split_df, load_class_weights
+train_ds = make_dataset("train", arch, training=True)     # aumento solo en train
+val_ds   = make_dataset("val",   arch, training=False)
+model.fit(train_ds, validation_data=val_ds, class_weight=load_class_weights())
+# Orden de las predicciones de val/test: split_df("val") / split_df("test")
+```
+
+- No se regenera el split ni se recalculan los pesos.
+- `make_dataset()` ya aplica la normalización oficial de cada red: el modelo no debe normalizar otra vez.
+- Las secciones 2 y 3 de `src/tfm_common.py` (datos y pipeline) quedan obsoletas.
+
+**Convenciones comunes fijadas:** semillas de entrenamiento `[42, 123, 2024]` (`configs/base.yaml`), MLflow 3.x (`requirements.txt`) y los nombres de experimentos de `docs/03_mlflow_convenciones.md`.
 
 ## 10. Reuniones
 
