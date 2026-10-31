@@ -65,7 +65,7 @@ setup_mlflow(cfg)
 
 ## Entorno
 
-Python 3.10 · TensorFlow 2.x / Keras · GPU T4 (Colab) · MLflow 3.x en DagsHub · scikit-learn · Matplotlib · Seaborn.
+Python 3.13 · TensorFlow 2.21 / Keras (versiones de Colab, registradas en cada run) · GPU T4 (Colab) · MLflow 3.x en DagsHub · scikit-learn · Matplotlib · Seaborn.
 
 ## Datos
 
