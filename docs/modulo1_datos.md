@@ -29,7 +29,7 @@ Entregar un conjunto de datos preparado **de forma idéntica** para las tres arq
 - [ ] Calcular `split_sha256` del CSV: **es la huella que M2 y M3 deben citar en cada run**.
 
 ### 4. Estrategia frente al desbalance
-- [ ] Pesos de clase calculados **solo con entrenamiento** (`compute_class_weight('balanced')`) → `class_weights.json`.
+- [ ] Pesos de clase calculados **solo con entrenamiento** → `class_weights.json`. Decisión final: pesos suavizados (raíz cuadrada de `balanced`, normalizados a peso medio 1; `class_weighting: "sqrt"` en `base.yaml`). Se leen con `load_class_weights()` de `src/data.py`.
 - [ ] Aumento de datos **solo en entrenamiento** y solo para clases minoritarias (definir cuáles; p. ej. todas menos `nv`). Transformaciones: rotación, volteo horizontal y vertical, zoom ligero, brillo y contraste ligeros.
 - [ ] Documentar en `base.yaml` qué transformaciones y con qué parámetros.
 
