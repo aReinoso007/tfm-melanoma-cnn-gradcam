@@ -7,8 +7,9 @@
 Entrenar las tres arquitecturas bajo condiciones idénticas, seleccionar el mejor modelo en validación con la regla acordada y evaluarlo una sola vez en prueba.
 
 ## Mientras M1 termina la partición (no hay que esperar)
-- [ ] Escribir `src/models.py` con `build_model(arch, num_classes=7)` usando como base ResNet50, DenseNet121 y EfficientNetB0 (`weights="imagenet"`, `include_top=False`) + `GlobalAveragePooling2D` + `Dropout` + `Dense(7, softmax)`.
-- [ ] Escribir `src/metrics.py` con todas las métricas de `03_mlflow_convenciones.md` §5, a partir de `y_true` y `y_prob`.
+- [x] Escribir `src/models.py` con `build_model(arch, num_classes=7)` usando como base ResNet50, DenseNet121 y EfficientNetB0 (`weights="imagenet"`, `include_top=False`) + `GlobalAveragePooling2D` + `Dropout` + `Dense(7, softmax)`. Incluye `congelar_base()` (fase 1) y `descongelar_fraccion()` (fase 2). Rama `m2/modelos-metricas`; razones en [modulo2_registro_decisiones.md](modulo2_registro_decisiones.md) D3–D6.
+- [x] Escribir `src/metrics.py` con todas las métricas de `03_mlflow_convenciones.md` §5, a partir de `y_true` y `y_prob`. Incluye `tabla_predicciones()` para `predicciones_<val|test>.csv` (D7–D8).
+- [x] Pruebas en `tests/` (`python -m pytest tests -q`, 22 pruebas, sin GPU) (D9).
 - [ ] Probar el pipeline completo con un **subconjunto pequeño** en el experimento `sandbox` (2 épocas) para detectar errores antes de gastar GPU.
 
 ## Pasos
