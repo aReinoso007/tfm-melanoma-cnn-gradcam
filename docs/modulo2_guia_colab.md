@@ -15,7 +15,7 @@ En local ya pasan las 22 pruebas de `tests/`, pero con pesos aleatorios y en CPU
 | Una fase 1 y una fase 2 mínimas compilan y entrenan | Keras exige recompilar al cambiar `trainable`. |
 | Secretos y MLflow/DagsHub funcionan (run en `sandbox`) | Si el token está mal, se descubre aquí y no tras horas de entrenamiento. |
 
-Gasta unos 10–15 minutos de GPU, la mayor parte en descargar pesos y copiar el dataset.
+Dura unos 10–15 minutos (en la práctica: ~92 s en descomprimir el dataset, ~2 min en las pruebas y el resto en descargar pesos), con la GPU encendida todo el rato.
 
 ## 1. Preparación (una sola vez)
 

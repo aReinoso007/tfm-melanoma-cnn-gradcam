@@ -128,13 +128,16 @@ Con pesos de ImageNet y las imágenes locales (`documentos-drive/HAM10000-002/im
 
 | Bloque | Resultado | Lectura |
 |---|---|---|
+| 1. Sesión | GPU `Tesla T4` (15 360 MiB), Python 3.13.16, commit `0c19a11` de la rama; dataset descomprimido en 92 s; `[+] 10015 imágenes, metadatos y split v1 verificados` | Entorno igual al previsto (T4 y Python 3.13); los hashes de datos y split coinciden también en Colab |
 | 2. Pruebas (Python 3.13, sklearn en `dist-packages` de Colab) | `22 passed` en 114 s; solo los 3 avisos esperados de AUC sin dos clases | El código funciona en el entorno real, no solo en Python 3.12 |
 | 3. Redes con ImageNet y lotes de `make_dataset()` | Los 6 conteos de parámetros por fase y los % coinciden exactamente con los de local (ResNet50 14 343 → 17 199 111; DenseNet121 7 175 → 2 862 087; EfficientNetB0 8 967 → 3 063 587) | El congelado se comporta igual en Colab; confirma D4 y D5 |
 | 4. `set_seeds(42, deterministic=True)` + 1 paso en cada fase (EfficientNetB0) | Sin error: fase 1 `loss=1.846`, fase 2 `loss=1.503` | `enable_op_determinism()` no falla en esa configuración. Cubre solo EfficientNetB0 y 3 lotes; ResNet50 y DenseNet121 se confirman en el primer entrenamiento real (ver riesgo) |
+| 5. Métricas y `tabla_predicciones` con 64 imágenes reales de validación (sin entrenar) | Corren sin error; columnas `image_id, lesion_id, y_true, y_pred, p_akiec … p_vasc`; `y_true`/`y_pred` como nombre de clase; probabilidades por fila suman 1; aviso de AUC por una sola clase (esperado con 64 imágenes consecutivas) | El formato del contrato M2 → M3 funciona con datos reales. Los valores (`val_macro_f1` 0,178, `val_mel_sensitivity` 0,1) son de un modelo sin entrenar y no significan nada |
+| 6. MLflow/DagsHub | Run `m2-verificacion-paso1` creado; `git_dirty = False`. Se comprobó por la API de MLflow que el experimento de ese run (id 0) se llama `sandbox` | Secretos y token con permiso de escritura correctos; el código del run está limpio. Las convenciones de `sandbox` se respetan |
 
 Las pérdidas del bloque 4 salen de 3 lotes de validación sin entrenar de verdad: solo indican que compila y que la pérdida baja, no sirven como resultado.
 
-**Pendiente de confirmar:** no se recibió la salida de los bloques 1 (tipo de GPU y versión de Python), 5 (métricas y tabla de predicciones) ni 6 (run de prueba en MLflow/DagsHub). Hasta tenerlos no se da por cerrada la verificación de la GPU, de la tabla de predicciones sobre datos reales ni de los secretos de DagsHub.
+**Estado: verificación del paso 1 cerrada.** Los seis bloques se ejecutaron y coinciden con lo esperado.
 
 **Riesgo residual del determinismo.** El bloque 4 solo ejercita EfficientNetB0. Las otras dos redes usan operaciones distintas (`ResNet50`: convoluciones y pooling; `DenseNet121`: concatenaciones). Si alguna falla con `deterministic=True`, la opción es `deterministic=False` registrado como parámetro del run, decisión del grupo porque afecta a la reproducibilidad (OE7).
 
