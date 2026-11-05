@@ -120,6 +120,45 @@ Rama: `m2/modelos-metricas` (antes `modulo-2`).
 **Razón.** Un error en la métrica o en el congelado no da ningún aviso: el entrenamiento corre igual y solo se nota semanas después, con 9 runs de GPU ya gastados. Probar antes en el portátil es gratis.
 **Cómo se ejecuta.** `pip install -r requirements.txt pytest` y `python -m pytest tests -q` desde la raíz. Entorno de comprobación: Python 3.12, TensorFlow 2.21.0, Keras 3.15.1, scikit-learn 1.9.1. Colab usa Python 3.13 con las mismas versiones de TensorFlow, Keras y scikit-learn.
 
+### D10. Determinismo: regla fijada antes de medir
+
+**Decisión.** Antes del primer entrenamiento se mide, para las tres redes, (a) si `deterministic=True` lanza error, (b) si dos pasadas con la misma semilla dan **exactamente** las mismas pérdidas y pesos, y (c) cuánto tiempo por paso cuesta frente a `deterministic=False`. La regla de decisión es:
+
+| Resultado de la medición | Decisión |
+|---|---|
+| Alguna red lanza error con `deterministic=True` | `deterministic=False` en **las tres** redes |
+| `deterministic=True` no se repite en alguna red | No se entrena hasta entender por qué |
+| Se repite en las tres y la penalización de tiempo es ≤ 1,3× | `deterministic=True` en los 9 runs |
+| Se repite en las tres pero la penalización es > 1,3× | Decisión del grupo (cuota de GPU frente a repetibilidad) |
+
+**Razón.**
+- *Medir antes de entrenar:* el bloque 4 de la verificación solo comprobó que no hay error en EfficientNetB0. "No da error" no es "se repite": lo que interesa es lo segundo. Descubrir un fallo en ResNet50 o DenseNet121 en el run 4 de 9 gastaría cuota de GPU gratuita.
+- *Fijar la regla antes de ver el número:* evita elegir el umbral de penalización a conveniencia una vez visto el resultado.
+- *Las tres redes con el mismo modo:* mezclar modos rompería la condición de "condiciones idénticas" (OE2). Si una falla, las tres pasan a `False`.
+- *Un proceso por combinación (`scripts/bench_determinismo.py`):* `enable_op_determinism()` no se puede desactivar dentro de un proceso, así que comparar los dos modos exige procesos separados. Los lotes se cargan en memoria antes de medir para que el tiempo sea el del paso de entrenamiento y no el de leer JPEG.
+- *No sobrevalorar el determinismo:* es repetible solo con el mismo hardware y versiones, y los runs se reparten entre tres cuentas de Colab que pueden recibir GPUs distintas. La reproducibilidad que se defiende en la memoria es: semillas fijas + trazabilidad (`git_commit`, versiones, GPU, `split_sha256`) + media ± desviación estándar sobre 3 semillas. El aumento de datos ya es repetible por sí mismo (operaciones con semilla por imagen en `src/augmentation.py`).
+- *Se registra siempre:* cada run guarda `deterministic`, la GPU y la versión de TensorFlow como parámetros, sea cual sea la decisión.
+**Evidencia.** Ensayo del script en CPU local (ResNet50, 3 lotes por fase): repetible en ambos modos, sin errores. En CPU no hay penalización relevante (630 ms frente a 709 ms por paso), así que las cifras que cuentan son las de la T4. El resultado en Colab se anota abajo cuando se ejecute.
+**Origen.** Decisión de implementación; el resultado final lo ratifica el grupo.
+
+### D11. Dónde se registra cada run en MLflow
+
+**Decisión.**
+
+| Qué | Experimento | Nombre del run |
+|---|---|---|
+| Pruebas de entorno, verificaciones, ensayos de 2 épocas con subconjunto | `sandbox` | libre (p. ej. `m2-verificacion-paso1`) |
+| Los 9 entrenamientos | `m2-entrenamiento` | `m2-<arch>-s<seed>` |
+| Las 3 evaluaciones finales en prueba | `m2-evaluacion-test` | `m2-test-<arch>` |
+
+**Razón.**
+- `sandbox` es exactamente para esto: `docs/03_mlflow_convenciones.md` §1 lo define como "pruebas y depuración, nada de aquí se cita en la memoria". Adrián hizo lo mismo: su prueba de entorno (`m1-prueba-entorno`) está en `sandbox` y sus runs oficiales (`m1-eda`, `m1-split-v1`, `m1-pipeline`…) en `m1-datos`. Eso se comprobó en la API de DagsHub el 4 nov.
+- Mantener los experimentos oficiales limpios hace que la checklist de reproducibilidad (§8) sea una consulta simple: "todos los runs de `m2-entrenamiento`" son exactamente los 9 que cuentan, sin tener que filtrar pruebas.
+- `m2-entrenamiento` y `m2-evaluacion-test` no existen todavía: `mlflow.set_experiment()` los crea en el primer uso. No hace falta crearlos a mano.
+- Todos los runs nacen con `estado=en_curso` (lo pone `standard_tags()`); al cerrar el paso hay que marcar `final` o `descartado` a mano, como hizo Adrián con su split anterior. Un run oficial que sale mal se marca `descartado`, no se borra: queda la evidencia de lo que se probó.
+- Para evitar que un run de prueba acabe en el experimento oficial por descuido, el notebook de entrenamiento tendrá un único interruptor `MODO = "sandbox" | "real"` que elige el experimento. En modo `real` se negará a arrancar si `git_dirty=true`, porque esos runs no valen como resultado final (`docs/02_flujo_de_trabajo.md` §6).
+**Origen.** Acordada (convenciones de MLflow). El interruptor `MODO` es decisión de implementación.
+
 ### Comprobación de integración con el pipeline de M1
 
 Con pesos de ImageNet y las imágenes locales (`documentos-drive/HAM10000-002/images`), se pasaron 2 lotes de validación de `make_dataset("val", arch, training=False)` por cada una de las tres redes: salida `(64, 7)` con probabilidades que suman 1. Confirma que el modelo y el pipeline de M1 son compatibles (tamaño 224×224, normalización fuera del modelo).
@@ -143,6 +182,7 @@ Las pérdidas del bloque 4 salen de 3 lotes de validación sin entrenar de verda
 
 ### Qué NO se hizo todavía (siguientes pasos)
 
+0. Ejecutar en Colab el bloque 4b del notebook `m2_00` (determinismo en las tres redes, D10) y anotar aquí el resultado y el veredicto.
 1. Callback y bucle de entrenamiento de las dos fases (`f1_*`, `f2_*` en el mismo run, checkpoints en Drive, `BackupAndRestore`).
 2. Prueba en `sandbox` con subconjunto pequeño y 2 épocas, en Colab con GPU.
 3. Los 9 runs, la selección, la evaluación en prueba y el registro de modelos.

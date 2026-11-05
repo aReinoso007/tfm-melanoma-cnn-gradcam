@@ -15,7 +15,7 @@ En local ya pasan las 22 pruebas de `tests/`, pero con pesos aleatorios y en CPU
 | Una fase 1 y una fase 2 mínimas compilan y entrenan | Keras exige recompilar al cambiar `trainable`. |
 | Secretos y MLflow/DagsHub funcionan (run en `sandbox`) | Si el token está mal, se descubre aquí y no tras horas de entrenamiento. |
 
-Dura unos 10–15 minutos (en la práctica: ~92 s en descomprimir el dataset, ~2 min en las pruebas y el resto en descargar pesos), con la GPU encendida todo el rato.
+Dura unos 20 minutos (el bloque 4b añade 5–8) (en la práctica: ~92 s en descomprimir el dataset, ~2 min en las pruebas y el resto en descargar pesos), con la GPU encendida todo el rato.
 
 ## 1. Preparación (una sola vez)
 
@@ -51,6 +51,7 @@ Qué debe verse en cada bloque:
 | 2. Pruebas | `22 passed` |
 | 3. Redes con ImageNet | Tabla con estos valores (si no coinciden, parar y avisar) |
 | 4. Determinismo | `[+] fase 1: ...` y `[+] fase 2: ...` |
+| 4b. Determinismo en las 3 redes | Una tabla con 6 filas (3 redes × `det` 0 y 1), sin `error`, con `repetible = True` en las filas `det = 1`, y al final `VEREDICTO: …` |
 | 5. Métricas | Una fila de métricas y el encabezado `image_id, lesion_id, y_true, y_pred, p_akiec…` |
 | 6. MLflow | `[+] Run creado en el experimento sandbox` |
 

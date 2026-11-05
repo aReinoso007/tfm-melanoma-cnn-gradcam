@@ -38,6 +38,7 @@ tfm-melanoma-cnn-gradcam/
 │   ├── tfm_common.py        # heredado; sus secciones de datos (2-3) y de modelos y métricas (4-5) están obsoletas
 │   └── tracking.py          # utilidades comunes: MLflow, semillas, hashes, tags
 ├── tests/                   # pruebas con pytest (sin GPU): python -m pytest tests -q
+├── scripts/                 # comprobaciones puntuales (p. ej. bench_determinismo.py, Módulo 2)
 ├── requirements.txt
 └── .gitignore
 ```
