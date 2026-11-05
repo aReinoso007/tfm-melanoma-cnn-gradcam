@@ -4,6 +4,30 @@ Responsable: Alex Reinoso. Aquí se anota **qué se decidió, por qué y qué ev
 
 Estado de las tareas: ver las casillas de [modulo2_entrenamiento_evaluacion.md](modulo2_entrenamiento_evaluacion.md).
 
+## Resumen de decisiones del paso 1
+
+| # | Decisión | Origen | ¿Revisar en el PR? |
+|---|---|---|---|
+| D1 | Rama `m2/<tarea>` (esta: `m2/modelos-metricas`) | Acordada | No |
+| D2 | Lógica en `src/`, notebooks solo la importan | Acordada | No |
+| D3 | Misma cabeza en las 3 redes; capas del backbone aplanadas; prefijo `head_`; el modelo no normaliza | Estructura acordada; capas aplanadas, implementación | Sí (nombres de capa que usará M3) |
+| D4 | Fase 1: base congelada, solo cabeza | Acordada | No |
+| D5 | Fase 2: 30 % final de las capas, BatchNormalization siempre congelada | Fracción y BN acordadas; conteo por capas, implementación | **Sí: 30 % de capas ≠ 30 % de parámetros (73 % / 41 % / 76 %)** |
+| D6 | Los helpers de congelado no compilan | Implementación | No |
+| D7 | Métricas con los nombres de la convención; definiciones estándar | Nombres acordados | No |
+| D8 | `predicciones_*.csv` con `y_true`/`y_pred` como nombre de clase | Columnas acordadas; nombres, implementación | **Sí: confirmar con M3** |
+| D9 | Pruebas con `pytest` (22) | Implementación | No |
+| D10 | `deterministic=True` en los 9 runs (`training.deterministic` en `base.yaml`) | Medición propia | **Sí: cambia `base.yaml`, necesita aprobación de los tres** |
+| D11 | `sandbox` para pruebas; `m2-entrenamiento` y `m2-evaluacion-test` para lo oficial; `estado` a mano | Acordada (convenciones) | No |
+
+## Conclusiones del paso 1 (4 nov 2026)
+
+1. **El código del M1 es consistente** entre repo, Drive y MLflow (hashes del split y del dataset, pesos, pipeline). M2 puede construir sobre él sin cambios.
+2. **`src/models.py` y `src/metrics.py` funcionan** en el portátil (Python 3.12) y en Colab (Python 3.13, T4): 22 pruebas en verde, parámetros entrenables idénticos en ambos entornos, formato de `predicciones_*.csv` validado con datos reales y run de prueba creado en `sandbox`.
+3. **El determinismo es viable en las tres redes**: ninguna lanza error con `deterministic=True` y las tres se repiten exactamente; sin él, DenseNet121 y EfficientNetB0 no se repiten ni entre dos pasadas idénticas. Cuesta 1,37× a 1,90× por paso (≈ 26 min más por cuenta en el peor caso). Se adopta `True`, pendiente de confirmar el coste con el pipeline completo en `sandbox`.
+4. **Hallazgo metodológico para la memoria:** "30 % de las capas" descongela un porcentaje muy distinto de parámetros según la red (D5). Hay que mencionarlo como limitación del protocolo "mismos hiperparámetros base".
+5. **Qué no se ha hecho:** ningún entrenamiento real. Los números de las métricas vistas hasta ahora (por ejemplo `val_macro_f1` = 0,178) son de modelos sin entrenar y no son resultados.
+
 ---
 
 ## Paso 0 — Revisión del estado heredado del Módulo 1 (3 nov 2026)
@@ -151,7 +175,9 @@ Lectura:
 - Sin determinismo, DenseNet121 y EfficientNetB0 ya difieren entre dos pasadas idénticas, aunque a un nivel de redondeo (≈10⁻⁷ en la pérdida tras 20 pasos). Aquí no se midió cuánto se amplifica esa diferencia a lo largo de un entrenamiento completo.
 - Las tres penalizaciones superan el umbral de 1,3× fijado antes de medir, así que **por la regla no hay decisión automática: la toma el grupo**.
 
-**Recomendación al grupo: `deterministic=True` en las tres redes, de forma provisional.** El umbral de 1,3× era una aproximación a "el coste es asumible"; el coste absoluto, calculado con estos tiempos, es pequeño:
+**Decisión adoptada (4 nov 2026): `deterministic=True` en las tres redes, de forma provisional**, sujeta a la ratificación del grupo en el PR y a la comprobación del coste real en `sandbox`. Queda reflejada en `configs/base.yaml` (`training.deterministic: true`).
+
+**Razonamiento.** El umbral de 1,3× era una aproximación a "el coste es asumible"; el coste absoluto, calculado con estos tiempos, es pequeño:
 
 | (peor caso: 45 épocas por run, 220 lotes por época, sin parada anticipada) | `det=False` | `det=True` |
 |---|---|---|
@@ -166,7 +192,7 @@ Son ≈ 26 min más por cuenta en el peor caso. Es un orden de magnitud, no una 
 - **Condición para confirmarlo:** en la prueba de `sandbox` (paso siguiente) se mide el tiempo real por época con el pipeline completo. Si la proyección a 45 épocas supera ≈ 2 h por cuenta, se vuelve a plantear al grupo.
 - Cualquiera que sea el modo, se registra en cada run como `deterministic` (junto con GPU y versión de TensorFlow). Si se confirma, se añadirá a `configs/base.yaml` (`training.deterministic: true`), cambio que necesita el PR aprobado por los tres.
 
-**Origen.** Medición propia; el modo definitivo lo ratifica el grupo en el PR.
+**Origen.** Medición propia; el modo definitivo lo ratifica el grupo en el PR. Cada run registra `deterministic`, `gpu` y `tf_version` (`docs/03_mlflow_convenciones.md` §4).
 
 ### D11. Dónde se registra cada run en MLflow
 
@@ -198,6 +224,7 @@ Con pesos de ImageNet y las imágenes locales (`documentos-drive/HAM10000-002/im
 | 2. Pruebas (Python 3.13, sklearn en `dist-packages` de Colab) | `22 passed` en 114 s; solo los 3 avisos esperados de AUC sin dos clases | El código funciona en el entorno real, no solo en Python 3.12 |
 | 3. Redes con ImageNet y lotes de `make_dataset()` | Los 6 conteos de parámetros por fase y los % coinciden exactamente con los de local (ResNet50 14 343 → 17 199 111; DenseNet121 7 175 → 2 862 087; EfficientNetB0 8 967 → 3 063 587) | El congelado se comporta igual en Colab; confirma D4 y D5 |
 | 4. `set_seeds(42, deterministic=True)` + 1 paso en cada fase (EfficientNetB0) | Sin error: fase 1 `loss=1.846`, fase 2 `loss=1.503` | `enable_op_determinism()` no falla en esa configuración. Cubre solo EfficientNetB0 y 3 lotes; ResNet50 y DenseNet121 se confirman en el primer entrenamiento real (ver riesgo) |
+| 4b. `scripts/bench_determinismo.py` en las 3 redes, `det` False y True, dos pasadas con la misma semilla | Sin errores; con `det=True` las tres se repiten; con `det=False` DenseNet121 y EfficientNetB0 no; penalización 1,37× / 1,62× / 1,90× | Detalle y decisión en D10 |
 | 5. Métricas y `tabla_predicciones` con 64 imágenes reales de validación (sin entrenar) | Corren sin error; columnas `image_id, lesion_id, y_true, y_pred, p_akiec … p_vasc`; `y_true`/`y_pred` como nombre de clase; probabilidades por fila suman 1; aviso de AUC por una sola clase (esperado con 64 imágenes consecutivas) | El formato del contrato M2 → M3 funciona con datos reales. Los valores (`val_macro_f1` 0,178, `val_mel_sensitivity` 0,1) son de un modelo sin entrenar y no significan nada |
 | 6. MLflow/DagsHub | Run `m2-verificacion-paso1` creado; `git_dirty = False`. Se comprobó por la API de MLflow que el experimento de ese run (id 0) se llama `sandbox` | Secretos y token con permiso de escritura correctos; el código del run está limpio. Las convenciones de `sandbox` se respetan |
 
@@ -209,7 +236,7 @@ Las pérdidas del bloque 4 salen de 3 lotes de validación sin entrenar de verda
 
 ### Qué NO se hizo todavía (siguientes pasos)
 
-0. Ratificar D10 con el grupo (propuesta: `deterministic=True`) y confirmar el coste real por época en la prueba de `sandbox`.
-1. Callback y bucle de entrenamiento de las dos fases (`f1_*`, `f2_*` en el mismo run, checkpoints en Drive, `BackupAndRestore`).
-2. Prueba en `sandbox` con subconjunto pequeño y 2 épocas, en Colab con GPU.
+0. Que el grupo apruebe el PR de `m2/modelos-metricas`, con atención a D5, D8 y D10.
+1. Callback y bucle de entrenamiento de las dos fases (`f1_*`, `f2_*` en el mismo run, checkpoints en Drive, `BackupAndRestore`, interruptor `MODO`, registro de `deterministic`, `gpu` y `tf_version`).
+2. Prueba en `sandbox` con subconjunto pequeño y 2 épocas, en Colab con GPU: confirma además el tiempo real por época con `deterministic=True` (D10).
 3. Los 9 runs, la selección, la evaluación en prueba y el registro de modelos.

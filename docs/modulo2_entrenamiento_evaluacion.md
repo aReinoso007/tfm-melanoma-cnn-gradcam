@@ -16,7 +16,7 @@ Entrenar las tres arquitecturas bajo condiciones idénticas, seleccionar el mejo
 
 ### 1. Configuración común
 - [ ] Hiperparámetros base en `configs/base.yaml`, **iguales para las tres arquitecturas**. Cualquier cambio pasa por un PR aprobado por los tres.
-- [ ] Semillas: `[42, 123, 2024]`. Al inicio de cada run, `set_seeds(seed)`.
+- [ ] Semillas: `[42, 123, 2024]`. Al inicio de cada run, `set_seeds(seed)` (con `training.deterministic: true`, decisión D10: medido en las tres redes, se repite exacto y cuesta 1,4–1,9× por paso). Registrar `deterministic`, `gpu` y `tf_version` en cada run.
 
 ### 2. Fase 1 — base congelada (Fase 2 de la metodología)
 - [ ] `base.trainable = False`; solo se entrena la cabeza.

@@ -51,7 +51,7 @@ Qué debe verse en cada bloque:
 | 2. Pruebas | `22 passed` |
 | 3. Redes con ImageNet | Tabla con estos valores (si no coinciden, parar y avisar) |
 | 4. Determinismo | `[+] fase 1: ...` y `[+] fase 2: ...` |
-| 4b. Determinismo en las 3 redes | Una tabla con 6 filas (3 redes × `det` 0 y 1), sin `error`, con `repetible = True` en las filas `det = 1`, y al final `VEREDICTO: …` |
+| 4b. Determinismo en las 3 redes | Una tabla con 6 filas (3 redes × `det` 0 y 1), sin `error`, con `repetible = True` en las filas `det = 1`, y al final `VEREDICTO: …`. Resultado obtenido el 4 nov: sin errores, las tres repetibles con `det = 1`, penalización de 1,37× / 1,62× / 1,90× (ResNet50 / DenseNet121 / EfficientNetB0), por lo que el veredicto automático fue «decidir en grupo» (ver D10 en el registro de decisiones) |
 | 5. Métricas | Una fila de métricas y el encabezado `image_id, lesion_id, y_true, y_pred, p_akiec…` |
 | 6. MLflow | `[+] Run creado en el experimento sandbox` |
 

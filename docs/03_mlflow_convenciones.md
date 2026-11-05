@@ -40,7 +40,7 @@ Las fases 1 y 2 del fine-tuning van en **el mismo run** (`m2-<arch>-s<seed>`). L
 
 ## 4. Parámetros
 
-Se registra **toda la configuración** de `configs/base.yaml` (aplanada) más lo específico del run: `img_size`, `batch_size`, `optimizer`, `f1_lr`, `f1_epochs`, `f2_lr`, `f2_epochs`, `f2_unfreeze_fraction`, `class_weighting`, `augmentation`, `early_stopping_patience` y `monitor`.
+Se registra **toda la configuración** de `configs/base.yaml` (aplanada) más lo específico del run: `img_size`, `batch_size`, `optimizer`, `f1_lr`, `f1_epochs`, `f2_lr`, `f2_epochs`, `f2_unfreeze_fraction`, `class_weighting`, `augmentation`, `early_stopping_patience` y `monitor`. Además, en cada run de entrenamiento y de evaluación: `deterministic` (true/false), `gpu` (nombre de la GPU) y `tf_version`, para poder explicar cualquier diferencia entre runs lanzados desde cuentas distintas.
 
 ## 5. Métricas
 
