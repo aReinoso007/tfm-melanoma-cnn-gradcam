@@ -3,3 +3,4 @@ documentos-drive/
 __pycache__/
 .pytest_cache/
 .DS_Store
+resultados-locales/
