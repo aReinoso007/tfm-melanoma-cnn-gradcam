@@ -21,6 +21,11 @@ El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian co
 | D9 | Pruebas con `pytest` (22) | Implementación | No |
 | D10 | `deterministic=True` en los 9 runs (`training.deterministic` en `base.yaml`) | Medición propia | **Ratificada por el grupo (4 nov); el coste real por época se confirma en la prueba de `sandbox`** |
 | D11 | `sandbox` para pruebas; `m2-entrenamiento` y `m2-evaluacion-test` para lo oficial; `estado` a mano | Acordada (convenciones) | No |
+| D12 | Las dos fases van en el mismo run, con `step` = época acumulada (fase 2 continúa tras la 1) | Estructura acordada (`f1_*`, `f2_*`); `step` acumulado, implementación | Sí (PR del paso 2) |
+| D13 | Parada anticipada y mejores pesos por fase con un callback propio persistente (`ControlFase`), no `EarlyStopping` de Keras; monitor `val_loss`; el modelo final es el mejor de la fase 2 | Monitor y paciencia acordados; el callback propio, implementación | Sí |
+| D14 | Una sola pasada de validación por época: `val_loss` sin pesos de clase y `val_macro_f1`, para parada y para el log | Implementación | Sí |
+| D15 | Reanudación tras desconexión de Colab: `BackupAndRestore` + estado en JSON en Drive + marca `<fase>_completa.json` | Acordada la idea (checkpoints en Drive); el diseño, implementación | Sí |
+| D16 | `lanzar_run(modo="sandbox"\|"real")`: en `real` no admite `epochs`/`max_lotes`, exige árbol limpio y confirmación explícita | Interruptor acordado en D11; las guardas, implementación | Sí |
 
 ## Conclusiones del paso 1 (4 nov 2026)
 
@@ -242,3 +247,74 @@ Las pérdidas del bloque 4 salen de 3 lotes de validación sin entrenar de verda
 1. Callback y bucle de entrenamiento de las dos fases (`f1_*`, `f2_*` en el mismo run, checkpoints en Drive, `BackupAndRestore`, interruptor `MODO`, registro de `deterministic`, `gpu` y `tf_version`).
 2. Prueba en `sandbox` con subconjunto pequeño y 2 épocas, en Colab con GPU: confirma además el tiempo real por época con `deterministic=True` (D10).
 3. Los 9 runs, la selección, la evaluación en prueba y el registro de modelos.
+
+---
+
+## Paso 2 — `src/training.py`, `tests/test_training.py` y `notebooks/m2_01_entrenamiento.ipynb`
+
+Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la reanudación tras desconexión, el registro en MLflow y el notebook que lo lanza en modo `sandbox` o `real`. **Todavía no hay ningún entrenamiento real**: los resultados de la prueba de 2+2 épocas en Colab se anotarán en la sección "Verificación en Colab del paso 2" cuando se ejecute.
+
+### D12. Las dos fases en el mismo run, con `step` acumulado
+
+**Decisión.** Un solo run por (arquitectura, semilla) con métricas `f1_*` y `f2_*`. El `step` de MLflow es la **época acumulada**: si la fase 1 dura 15 épocas, la primera de la fase 2 se registra en el `step` 16.
+
+**Razón.**
+- Es lo que dicen las convenciones (`docs/03_mlflow_convenciones.md`): 9 runs oficiales, no 18.
+- Con el `step` acumulado las dos fases se dibujan en la misma gráfica sin que la fase 2 pise a la 1; la subida de la pérdida al descongelar (se ve incluso en la prueba local: 2,02 → 2,46 con 2 lotes) queda visible y se puede explicar en la memoria.
+
+### D13. `ControlFase` en vez de `EarlyStopping` de Keras
+
+**Decisión.** La parada anticipada y la restauración de los mejores pesos se implementan en un callback propio (`ControlFase`) que guarda su estado (mejor `val_loss`, mejor época, épocas sin mejora) en `<fase>_control.json` y los mejores pesos en `<fase>_mejor.weights.h5`. Monitor `val_loss`, paciencia 5 (`configs/base.yaml`). Al terminar la fase se restauran los mejores pesos. **El modelo final de cada run es el mejor de la fase 2**; el mejor `val_loss` de cada fase se registra (`f1_mejor_val_loss`, `f2_mejor_val_loss`) y la mejor época de cada fase también.
+
+**Razón.**
+- `EarlyStopping` guarda su contador y sus mejores pesos **en memoria**. Si Colab se desconecta y `BackupAndRestore` reanuda en la época 12, el `EarlyStopping` nuevo empieza de cero: contaría la paciencia desde ahí y `restore_best_weights` devolvería la mejor época *posterior al reinicio*, no la mejor de toda la fase. El resultado dependería de si hubo desconexión, y eso rompe la reproducibilidad (OE7).
+- Con el estado en disco, un run interrumpido y reanudado llega exactamente a la misma decisión que uno sin interrupción. Está probado en `tests/test_training.py` (simulando la desconexión).
+- El modelo final es el de la fase 2 porque es el que se evalúa y el que usa M3. Registrar también `f1_mejor_val_loss` permite ver si descongelar mejoró algo (comparación que irá en la memoria).
+
+### D14. Una sola pasada de validación por época
+
+**Decisión.** Un callback (`EvaluarValidacion`) recorre `val` una vez por época, calcula `val_loss` (entropía cruzada **sin pesos de clase**) y `val_macro_f1`, los inyecta en `logs` (así los ve `ControlFase`) y los registra en MLflow junto con `loss` de entrenamiento y `s_por_paso`.
+
+**Razón.**
+- Evita pasar dos veces por validación (una para Keras y otra para el F1), que son 1 502 imágenes por época.
+- `val_loss` sin pesos de clase: el `loss` de entrenamiento sí lleva pesos (`class_weight`), así que no es comparable con el de validación. La parada se hace con la pérdida sin pesos porque mide la calidad real de las probabilidades sobre la distribución real de las clases; el macro-F1 se registra para decidir (selección) pero no para parar, siguiendo la convención.
+- `s_por_paso` (tiempo por lote) se registra cada época: es lo que alimenta la proyección de coste de D10.
+
+### D15. Reanudación tras desconexión
+
+**Decisión.** Tres capas, todas en `checkpoints_dir` (Drive):
+1. `BackupAndRestore` de Keras por fase (`backup_<fase>/`): reanuda en la época interrumpida.
+2. Estado propio en JSON escritos de forma atómica (archivo temporal + `os.replace`, para que una desconexión a mitad de escritura no deje un JSON corrupto): `<fase>_historial.json` (métricas por época, sin duplicar épocas al reanudar), `<fase>_control.json` y `<fase>_mejor.weights.h5`.
+3. Marca `<fase>_completa.json`: si existe, la fase no se vuelve a entrenar y solo se recargan los mejores pesos. Así, una desconexión durante la fase 2 no repite la fase 1.
+
+**Razón.** Los runs largos (hasta ≈ 2 h por cuenta en el peor caso, D10) sobre Colab gratuito se van a interrumpir. Sin reanudación fiable, perder 1 h de GPU por una desconexión obligaría a repetir y comprometería el presupuesto de cuota. Probado con datos sintéticos 64×64 en `tests/test_training.py` (no duplica épocas, no repite fases completas).
+
+**Límite honesto.** `BackupAndRestore` restaura pesos y optimizador, pero no el estado del generador aleatorio del `shuffle`: un run reanudado a mitad es válido, pero **no es idéntico bit a bit** a uno ininterrumpido. Si un run se reanuda, hay que dejarlo anotado (el notebook lo muestra) y mencionarlo si afecta a un resultado oficial.
+
+### D16. `lanzar_run`: modos `sandbox` y `real`
+
+**Decisión.**
+
+| | `sandbox` | `real` |
+|---|---|---|
+| Experimento MLflow | `sandbox` | `m2-entrenamiento` |
+| Nombre del run | `m2-<arch>-s<seed>-sandbox` | `m2-<arch>-s<seed>` |
+| Estado en Drive | `checkpoints/sandbox/…` | `checkpoints/…` |
+| `epochs` / `max_lotes` | permitidos | **`ValueError`** |
+| `git_dirty=true` | permitido | **`RuntimeError`** |
+| Confirmación | no | el notebook exige `CONFIRMO_REAL = True` |
+
+**Razón.** Es el interruptor prometido en D11. Las guardas hacen imposible, por un descuido, que un run acortado o hecho con código sin commitear acabe en el experimento oficial. Los estados en carpetas distintas evitan que un ensayo `sandbox` "complete" una fase que luego el run real daría por entrenada. Con `max_lotes`, el dataset se recorre entero una vez antes de medir para que la caché de `tf.data` esté caliente y el `s_por_paso` sea el real y no el del primer pase (que incluye decodificar JPEG).
+
+### Verificación local del paso 2 (4 nov 2026)
+
+- `pytest tests -q`: 28 pruebas en verde (22 de modelos y métricas y 6 nuevas de entrenamiento), 56 s en el portátil.
+- **Ejecución de extremo a extremo en el portátil** (CPU, sin GPU, imágenes reales de `documentos-drive/`, EfficientNetB0 con ImageNet, 2 lotes por época, 1+1 épocas, MLflow local con SQLite): el run se crea con las etiquetas esperadas (`modulo=m2`, `fase=entrenamiento`, `modo=sandbox`, `arch`, `seed`), registra 61 métricas, los parámetros `deterministic=True`, `tf_version=2.21.0`, `gpu=sin GPU`, `n_capas_descongeladas=71`, y los 4 artefactos (`curvas.png`, `confusion_val_norm.png`, `classification_report_val.json`, `predicciones_val.csv`). El modelo se registra con `mlflow.tensorflow.log_model(..., name="modelo")` y **se vuelve a cargar con `mlflow.tensorflow.load_model("runs:/<id>/modelo")`** (el mismo mecanismo que usará M3): `Functional`, salida `(None, 7)`.
+- Los tiempos de esa ejecución (≈ 2,5 y 3,3 s/paso) son de CPU y **no valen para nada** salvo para comprobar que el campo se registra; el coste real se mide en la GPU de Colab.
+- **No verificado todavía:** que `log_model` funcione igual contra DagsHub (el servidor remoto no se ha probado con este formato) y el tiempo real por paso en la T4 con el pipeline completo. Ambos puntos los cubre la prueba de `sandbox` en Colab.
+
+### Qué falta del paso 2
+
+1. Ejecutar `m2_01_entrenamiento.ipynb` en `MODO = "sandbox"` en Colab (3 redes, 2+2 épocas), incluida la prueba de reanudación (ver `modulo2_guia_colab.md`).
+2. Con los `s_por_paso` reales, la proyección de coste: confirma o refuta la condición de D10 (peor caso ≲ 120 min por cuenta para 3 redes y 1 semilla). Si no se cumple, se vuelve a llevar al grupo.
+3. Abrir el PR y obtener la aprobación de los tres (toca `src/`).

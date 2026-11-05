@@ -1,6 +1,6 @@
 # Módulo 2 — Guía para ejecutar en Google Colab
 
-Esta guía cubre el **paso 1** (modelos y métricas), con el notebook [`notebooks/m2_00_verificacion_colab.ipynb`](../notebooks/m2_00_verificacion_colab.ipynb). Para los límites de Colab gratuito, los secretos y el reparto de GPU, ver [04_colab.md](04_colab.md); aquí solo está lo específico de M2.
+Esta guía cubre el **paso 1** (modelos y métricas), con el notebook [`notebooks/m2_00_verificacion_colab.ipynb`](../notebooks/m2_00_verificacion_colab.ipynb) (ya ejecutado y cerrado), y el **paso 2** (entrenamiento), con [`notebooks/m2_01_entrenamiento.ipynb`](../notebooks/m2_01_entrenamiento.ipynb): ver la sección 6 al final. Para los límites de Colab gratuito, los secretos y el reparto de GPU, ver [04_colab.md](04_colab.md); aquí solo está lo específico de M2.
 
 ## Qué comprueba y por qué hace falta
 
@@ -85,3 +85,57 @@ Al terminar: *Entorno de ejecución → Desconectar y eliminar el entorno de eje
 Con el paso 1 en verde, se abre el PR de `m2/modelos-metricas` a `main`. Como toca `src/`, necesita la aprobación de los tres (`docs/02_flujo_de_trabajo.md` §3). Las dos decisiones que más conviene revisar están marcadas como "punto abierto" en [modulo2_registro_decisiones.md](modulo2_registro_decisiones.md) (D5 y D8).
 
 El siguiente paso es el bucle de entrenamiento de las dos fases. Cuando exista, los runs reales se lanzarán desde un notebook basado en `00_plantilla_colab.ipynb`, con `BackupAndRestore` y `start_or_resume_run` para sobrevivir a desconexiones (`docs/04_colab.md` §5).
+
+## 6. Paso 2 — Entrenamiento (`m2_01_entrenamiento.ipynb`)
+
+Un solo notebook para la prueba y para los runs oficiales; el interruptor es `MODO` (celda de parámetros). Las razones de diseño están en D12–D16 del registro de decisiones.
+
+### 6.1 Antes de abrirlo
+
+1. Subir la rama desde el portátil: `git push -u origin m2/entrenamiento`.
+2. Mismos requisitos que el paso 1: T4 GPU, acceso directo a `TFM` en Drive, secretos `DAGSHUB_USER` y `DAGSHUB_TOKEN` activados para el notebook nuevo (el interruptor *Acceso desde el notebook* es por notebook).
+3. Abrir: `https://colab.research.google.com/github/aReinoso007/tfm-melanoma-cnn-gradcam/blob/m2/entrenamiento/notebooks/m2_01_entrenamiento.ipynb`. No usar "Guardar una copia en GitHub" (crea ramas y carpetas sueltas).
+
+### 6.2 Prueba en `sandbox` (lo primero que hay que hacer)
+
+Con los valores por defecto (`MODO = "sandbox"`, 3 redes, semilla 42, 2+2 épocas, datos completos): *Entorno de ejecución → Ejecutar todo*.
+
+**Tiempo estimado:** el primer epoch de cada red incluye decodificar los 7 009 JPEG (≈ 1–2 min extra); luego salen de la caché. Orden de magnitud: de 10 a 25 minutos para las tres redes. Los runs aparecen en el experimento `sandbox` con nombre `m2-<arch>-s42-sandbox`.
+
+| Qué mirar | Resultado esperado |
+|---|---|
+| Línea por época | `[f1] época 01  loss=…  val_loss=…  val_macro_f1=…  (… ms/paso)`; la fase 2 sigue con `[f2] época 03…` (numeración acumulada) |
+| `[+] m2-<arch>-s42-sandbox …` | Sin errores en las tres redes, sobre todo ResNet50 y DenseNet121 con `deterministic=True` (riesgo residual de D10: hasta ahora solo EfficientNetB0 se había probado en un entrenamiento) |
+| Sección 3, proyección de coste | Tabla con minutos de peor caso por red y `TOTAL por cuenta (3 redes)`. **Hay que copiar esa tabla**: confirma o refuta la condición de D10 (≤ ≈ 120 min por cuenta). Súmale un margen del 5–10 % por la validación de cada época |
+| Sección 4, carga del modelo | `modelo cargado (None, 7) | mismas probabilidades que en el entrenamiento: True` en las tres |
+| DagsHub → Experiments → `sandbox` | Curvas `f1_*` y `f2_*` en una sola gráfica; tags `modulo=m2`, `modo=sandbox`; parámetros `deterministic=True`, `gpu`, `tf_version`; artefactos `curvas.png`, `confusion_val_norm.png`, `classification_report_val.json`, `predicciones_val.csv`, y el modelo |
+
+Los valores de `val_macro_f1` tras 2+2 épocas **no son resultados**: solo indican que algo se aprende.
+
+### 6.3 Prueba de reanudación (recomendada, 5 minutos)
+
+Comprueba que una desconexión no hace perder el avance:
+
+1. Poner `ARCHS = ["efficientnetb0"]` y `SANDBOX_EPOCAS = (3, 3)`.
+2. Ejecutar la celda de lanzar y **detenerla** (botón de parar) durante la fase 2, o después de ver `[f1] época 03`.
+3. Poner `RETOMAR_SANDBOX = True` y volver a ejecutar esa misma celda de lanzar (sin reiniciar el notebook).
+4. Debe aparecer `Retomando run…`, la fase 1 **no** se repite y la fase 2 sigue desde su última época. En DagsHub debe ser **un solo** run con las épocas sin duplicar.
+
+Si el entorno se reinició de verdad (no solo se detuvo la celda), hay que volver a ejecutar las celdas de configuración antes de la de lanzar.
+
+### 6.4 Runs reales (cuando el PR esté fusionado y la prueba, confirmada)
+
+1. `BRANCH = "main"` (el código ya fusionado), `MODO = "real"`, `CONFIRMO_REAL = True`, `ARCHS` = las de tu cuenta y `SEED` según `docs/04_colab.md` §7.
+2. El notebook se niega a arrancar con cambios sin commit y `lanzar_run` no acepta `epochs`/`max_lotes` en este modo.
+3. Los runs quedan en `m2-entrenamiento` como `m2-<arch>-s<seed>`. Al terminar los 9, marcar a mano `estado = final` o `descartado`.
+
+### 6.5 Si algo falla
+
+| Síntoma | Causa probable | Qué hacer |
+|---|---|---|
+| `error: pathspec 'm2/entrenamiento' did not match` | Rama sin subir | `git push -u origin m2/entrenamiento` |
+| `OOM` / `ResourceExhaustedError` en una red | Memoria de GPU o de RAM (caché de `tf.data`) | Copiar el mensaje completo; no cambiar `batch_size` por tu cuenta (es de `base.yaml` y afecta a las tres redes) |
+| Error de operación no determinista en ResNet50 o DenseNet121 | Es el riesgo residual de D10 | Copiar el mensaje completo y avisar: la salida (`deterministic=False`) es del grupo |
+| Error en `mlflow.tensorflow.log_model` contra DagsHub | DagsHub puede no aceptar el formato de modelo de MLflow 3 | Copiar el mensaje completo; la alternativa es registrar el modelo como artefacto y no como modelo de MLflow, decisión que afecta a M3 |
+| Proyección de coste > 120 min por cuenta | Determinismo más caro de lo medido | No lanzar runs reales; llevarlo al grupo (D10) |
+| `RuntimeError: Hay cambios sin commit` (modo real) | El árbol de Colab tiene cambios | Volver a clonar o `git checkout .`; los runs oficiales salen de código commiteado |

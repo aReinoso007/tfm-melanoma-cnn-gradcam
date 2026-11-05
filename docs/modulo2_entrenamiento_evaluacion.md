@@ -10,31 +10,31 @@ Entrenar las tres arquitecturas bajo condiciones idénticas, seleccionar el mejo
 - [x] Escribir `src/models.py` con `build_model(arch, num_classes=7)` usando como base ResNet50, DenseNet121 y EfficientNetB0 (`weights="imagenet"`, `include_top=False`) + `GlobalAveragePooling2D` + `Dropout` + `Dense(7, softmax)`. Incluye `congelar_base()` (fase 1) y `descongelar_fraccion()` (fase 2). Rama `m2/modelos-metricas`; razones en [modulo2_registro_decisiones.md](modulo2_registro_decisiones.md) D3–D6.
 - [x] Escribir `src/metrics.py` con todas las métricas de `03_mlflow_convenciones.md` §5, a partir de `y_true` y `y_prob`. Incluye `tabla_predicciones()` para `predicciones_<val|test>.csv` (D7–D8).
 - [x] Pruebas en `tests/` (`python -m pytest tests -q`, 22 pruebas, sin GPU) (D9).
-- [ ] Probar el pipeline completo con un **subconjunto pequeño** en el experimento `sandbox` (2 épocas) para detectar errores antes de gastar GPU.
+- [x] Probar el pipeline completo con un **subconjunto pequeño** en el experimento `sandbox` (2 épocas) para detectar errores antes de gastar GPU. **Código y ejecución local de extremo a extremo listos** (`m2_01_entrenamiento.ipynb`, D12–D16); falta ejecutarlo en Colab con GPU.
 
 ## Pasos
 
 ### 1. Configuración común
 - [ ] Hiperparámetros base en `configs/base.yaml`, **iguales para las tres arquitecturas**. Cualquier cambio pasa por un PR aprobado por los tres.
-- [ ] Semillas: `[42, 123, 2024]`. Al inicio de cada run, `set_seeds(seed)` (con `training.deterministic: true`, decisión D10: medido en las tres redes, se repite exacto y cuesta 1,4–1,9× por paso). Registrar `deterministic`, `gpu` y `tf_version` en cada run.
+- [x] Semillas: `[42, 123, 2024]`. Al inicio de cada run, `set_seeds(seed)` (con `training.deterministic: true`, decisión D10: medido en las tres redes, se repite exacto y cuesta 1,4–1,9× por paso). Registrar `deterministic`, `gpu` y `tf_version` en cada run. Implementado en `lanzar_run` (D16).
 
 ### 2. Fase 1 — base congelada (Fase 2 de la metodología)
-- [ ] `base.trainable = False`; solo se entrena la cabeza.
-- [ ] Pérdida `categorical_crossentropy` con `class_weight` de `class_weights.json`.
-- [ ] Optimizador Adam con `f1_lr`, `EarlyStopping` sobre `val_loss` con `restore_best_weights=True`.
-- [ ] Registrar por época `f1_loss`, `f1_val_loss` y `f1_val_macro_f1` (callback propio).
+- [x] `base.trainable = False`; solo se entrena la cabeza.
+- [x] Pérdida `categorical_crossentropy` con `class_weight` de `class_weights.json`.
+- [x] Optimizador Adam con `f1_lr`, `EarlyStopping` sobre `val_loss` con `restore_best_weights=True`. Parada y mejores pesos con `ControlFase` (persistente), no `EarlyStopping` de Keras: D13.
+- [x] Registrar por época `f1_loss`, `f1_val_loss` y `f1_val_macro_f1` (callback propio). (`EvaluarValidacion`, D14).
 
 ### 3. Fase 2 — descongelado progresivo (Fase 3 de la metodología)
-- [ ] Descongelar la fracción superior de la base (`f2_unfreeze_fraction`).
-- [ ] **Mantener las capas BatchNormalization congeladas** (llamar a la base con `training=False`). Si no, el fine-tuning con lotes pequeños degrada los pesos de ImageNet.
-- [ ] Recompilar con `f2_lr` (≈ 10–100 veces menor que `f1_lr`) y continuar desde la mejor época de la fase 1.
-- [ ] Registrar `f2_*` con `step` = época acumulada.
-- [ ] Checkpoints en Drive para poder retomar si Colab se desconecta.
+- [x] Descongelar la fracción superior de la base (`f2_unfreeze_fraction`).
+- [x] **Mantener las capas BatchNormalization congeladas** (llamar a la base con `training=False`). Si no, el fine-tuning con lotes pequeños degrada los pesos de ImageNet.
+- [x] Recompilar con `f2_lr` (≈ 10–100 veces menor que `f1_lr`) y continuar desde la mejor época de la fase 1.
+- [x] Registrar `f2_*` con `step` = época acumulada. (D12).
+- [x] Checkpoints en Drive para poder retomar si Colab se desconecta. (D15; probado con una desconexión simulada).
 
 ### 4. Evaluación en validación (por run)
-- [ ] Predicciones en validación → `predicciones_val.csv` (probabilidades de las 7 clases).
-- [ ] Todas las métricas `val_*`, la matriz de confusión normalizada por filas y el `classification_report`.
-- [ ] Registrar el modelo con `mlflow.tensorflow.log_model`.
+- [x] Predicciones en validación → `predicciones_val.csv` (probabilidades de las 7 clases).
+- [x] Todas las métricas `val_*`, la matriz de confusión normalizada por filas y el `classification_report`.
+- [x] Registrar el modelo con `mlflow.tensorflow.log_model`. Funciona con MLflow local y recarga con `load_model`; **falta confirmarlo contra DagsHub en Colab**.
 - [ ] Repetir para 3 arquitecturas × 3 semillas = **9 runs**.
 
 ### 5. Selección (en validación, con la media de las 3 semillas)
