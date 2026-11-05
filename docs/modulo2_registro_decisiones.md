@@ -138,8 +138,35 @@ Rama: `m2/modelos-metricas` (antes `modulo-2`).
 - *Un proceso por combinación (`scripts/bench_determinismo.py`):* `enable_op_determinism()` no se puede desactivar dentro de un proceso, así que comparar los dos modos exige procesos separados. Los lotes se cargan en memoria antes de medir para que el tiempo sea el del paso de entrenamiento y no el de leer JPEG.
 - *No sobrevalorar el determinismo:* es repetible solo con el mismo hardware y versiones, y los runs se reparten entre tres cuentas de Colab que pueden recibir GPUs distintas. La reproducibilidad que se defiende en la memoria es: semillas fijas + trazabilidad (`git_commit`, versiones, GPU, `split_sha256`) + media ± desviación estándar sobre 3 semillas. El aumento de datos ya es repetible por sí mismo (operaciones con semilla por imagen en `src/augmentation.py`).
 - *Se registra siempre:* cada run guarda `deterministic`, la GPU y la versión de TensorFlow como parámetros, sea cual sea la decisión.
-**Evidencia.** Ensayo del script en CPU local (ResNet50, 3 lotes por fase): repetible en ambos modos, sin errores. En CPU no hay penalización relevante (630 ms frente a 709 ms por paso), así que las cifras que cuentan son las de la T4. El resultado en Colab se anota abajo cuando se ejecute.
-**Origen.** Decisión de implementación; el resultado final lo ratifica el grupo.
+**Evidencia (Colab, T4, 4 nov 2026; 10 lotes por fase, dos pasadas con la misma semilla, `scripts/bench_determinismo.py`).**
+
+| Arquitectura | `det=False`: ms/paso | repetible | dif. máx. de pérdida | `det=True`: ms/paso | repetible | Penalización |
+|---|---|---|---|---|---|---|
+| ResNet50 | 132,4 | sí | 0 | 181,3 | sí | 1,37× |
+| DenseNet121 | 107,0 | **no** | 2,4·10⁻⁷ | 173,4 | sí | 1,62× |
+| EfficientNetB0 | 48,9 | **no** (pesos distintos, pérdida igual) | 0 | 93,1 | sí | 1,90× |
+
+Lectura:
+- Ninguna red lanza error con `deterministic=True`, y las tres se repiten exactamente con él.
+- Sin determinismo, DenseNet121 y EfficientNetB0 ya difieren entre dos pasadas idénticas, aunque a un nivel de redondeo (≈10⁻⁷ en la pérdida tras 20 pasos). Aquí no se midió cuánto se amplifica esa diferencia a lo largo de un entrenamiento completo.
+- Las tres penalizaciones superan el umbral de 1,3× fijado antes de medir, así que **por la regla no hay decisión automática: la toma el grupo**.
+
+**Recomendación al grupo: `deterministic=True` en las tres redes, de forma provisional.** El umbral de 1,3× era una aproximación a "el coste es asumible"; el coste absoluto, calculado con estos tiempos, es pequeño:
+
+| (peor caso: 45 épocas por run, 220 lotes por época, sin parada anticipada) | `det=False` | `det=True` |
+|---|---|---|
+| ResNet50, un run | ≈ 22 min | ≈ 30 min |
+| DenseNet121, un run | ≈ 18 min | ≈ 29 min |
+| EfficientNetB0, un run | ≈ 8 min | ≈ 15 min |
+| Una cuenta (las 3 redes, 1 semilla, según el reparto de `04_colab.md` §7) | ≈ 48 min | ≈ 74 min |
+
+Son ≈ 26 min más por cuenta en el peor caso. Es un orden de magnitud, no una promesa: el cálculo usa el tiempo medio de las dos fases juntas (la fase 1 es más ligera) y **no incluye** la lectura de datos ni la predicción en validación de cada época. Con determinismo, `tf.data` además fija el orden de sus operaciones paralelas, lo que podría frenar la entrada de datos y no está medido aquí.
+- *A favor de `True`:* resultado exactamente repetible en el mismo hardware, lo que respalda OE7 y permite que otro integrante o el director reproduzca un número de la memoria; sin errores en ninguna red.
+- *En contra:* +26 min de GPU por cuenta, y la repetibilidad exacta solo vale con la misma GPU y versiones (los runs se reparten entre tres cuentas).
+- **Condición para confirmarlo:** en la prueba de `sandbox` (paso siguiente) se mide el tiempo real por época con el pipeline completo. Si la proyección a 45 épocas supera ≈ 2 h por cuenta, se vuelve a plantear al grupo.
+- Cualquiera que sea el modo, se registra en cada run como `deterministic` (junto con GPU y versión de TensorFlow). Si se confirma, se añadirá a `configs/base.yaml` (`training.deterministic: true`), cambio que necesita el PR aprobado por los tres.
+
+**Origen.** Medición propia; el modo definitivo lo ratifica el grupo en el PR.
 
 ### D11. Dónde se registra cada run en MLflow
 
@@ -182,7 +209,7 @@ Las pérdidas del bloque 4 salen de 3 lotes de validación sin entrenar de verda
 
 ### Qué NO se hizo todavía (siguientes pasos)
 
-0. Ejecutar en Colab el bloque 4b del notebook `m2_00` (determinismo en las tres redes, D10) y anotar aquí el resultado y el veredicto.
+0. Ratificar D10 con el grupo (propuesta: `deterministic=True`) y confirmar el coste real por época en la prueba de `sandbox`.
 1. Callback y bucle de entrenamiento de las dos fases (`f1_*`, `f2_*` en el mismo run, checkpoints en Drive, `BackupAndRestore`).
 2. Prueba en `sandbox` con subconjunto pequeño y 2 épocas, en Colab con GPU.
 3. Los 9 runs, la selección, la evaluación en prueba y el registro de modelos.
