@@ -54,7 +54,7 @@ Abrir `notebooks/00_plantilla_colab.ipynb` (o un notebook que empiece con sus ce
 
 ## 4. Dónde se edita el código
 
-- **Lógica (`src/`)**: se puede editar en Colab con el editor de archivos (barra lateral → carpeta → doble clic en el `.py`) o en local con VS Code. Después de editar un módulo ya importado, ejecutar `%load_ext autoreload` y `%autoreload 2` para no tener que reiniciar la sesión.
+- **Lógica (`src/`)**: se puede editar en Colab con el editor de archivos (barra lateral → carpeta → doble clic en el `.py`) o en local con VS Code. Después de editar un módulo ya importado hay que **reiniciar la sesión** (*Entorno de ejecución → Reiniciar sesión*) y volver a ejecutar las celdas de configuración. `%load_ext autoreload` no sirve en Colab con Python 3.13: falla con `No module named 'imp'`.
 - **Notebooks (`notebooks/`)**: se guardan en el repo con *Archivo → Guardar una copia en GitHub*, o se descargan y se copian a la carpeta del repo clonado antes del commit.
 - Regla de siempre: **commit y push antes de entrenar**. Si no, el run queda con `git_dirty=true` y no vale como resultado final.
 

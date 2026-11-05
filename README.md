@@ -16,6 +16,8 @@ Director: Pablo Gimeno Jordan.
 | [docs/04_colab.md](docs/04_colab.md) | Cómo trabajar en Colab gratuito: Drive compartido, secretos, sesiones, checkpoints y reparto de GPU |
 | [docs/modulo1_datos.md](docs/modulo1_datos.md) | Pasos del Módulo 1: EDA, desbalance, partición y pipeline `tf.data` |
 | [docs/modulo2_entrenamiento_evaluacion.md](docs/modulo2_entrenamiento_evaluacion.md) | Pasos del Módulo 2: fine-tuning, selección y evaluación |
+| [docs/modulo2_registro_decisiones.md](docs/modulo2_registro_decisiones.md) | Módulo 2: qué se decidió, por qué y con qué evidencia |
+| [docs/modulo2_guia_colab.md](docs/modulo2_guia_colab.md) | Módulo 2: cómo ejecutar y verificar el paso 1 en Colab |
 | [docs/modulo3_gradcam.md](docs/modulo3_gradcam.md) | Pasos del Módulo 3: Grad-CAM, falsos negativos y ABCDE |
 
 ## Estructura del repositorio
@@ -31,8 +33,12 @@ tfm-melanoma-cnn-gradcam/
 ├── src/
 │   ├── data.py              # Módulo 1: make_dataset(), split_df(), load_class_weights()
 │   ├── augmentation.py      # Módulo 1: aumento selectivo (solo train)
-│   ├── tfm_common.py        # modelos y métricas (M2); sus secciones 2-3 de datos están obsoletas
+│   ├── models.py            # Módulo 2: build_model(), congelar_base(), descongelar_fraccion()
+│   ├── metrics.py           # Módulo 2: calcular_metricas(), matriz_confusion(), tabla_predicciones()
+│   ├── tfm_common.py        # heredado; sus secciones de datos (2-3) y de modelos y métricas (4-5) están obsoletas
 │   └── tracking.py          # utilidades comunes: MLflow, semillas, hashes, tags
+├── tests/                   # pruebas con pytest (sin GPU): python -m pytest tests -q
+├── scripts/                 # comprobaciones puntuales (p. ej. bench_determinismo.py, Módulo 2)
 ├── requirements.txt
 └── .gitignore
 ```

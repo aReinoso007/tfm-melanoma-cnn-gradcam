@@ -50,6 +50,7 @@ data:
 
 training:
   seeds: [42, 123, 2024]
+  deterministic: true                        # enable_op_determinism() en los 9 runs (decisión D10 del M2: se repite exacto, ~1,4-1,9x más lento por paso)
   architectures: ["resnet50", "densenet121", "efficientnetb0"]
   batch_size: 32                             # propuesta
   dropout: 0.3                               # propuesta

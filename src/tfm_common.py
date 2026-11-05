@@ -12,8 +12,8 @@ Secciones y responsable principal:
   1. Constantes y rutas ............................ común
   2. Datos: descarga, redimensionado, split ........ Módulo 1 (OBSOLETA: ver abajo)
   3. Pipeline tf.data y augmentation ............... Módulo 1 (OBSOLETA: ver abajo)
-  4. Modelos y congelado de capas .................. Módulo 2
-  5. Métricas ...................................... Módulo 2
+  4. Modelos y congelado de capas .................. Módulo 2 (OBSOLETA: ver src/models.py)
+  5. Métricas ...................................... Módulo 2 (OBSOLETA: ver src/metrics.py)
   6. Utilidades (semillas, JSON, MLflow, gráficos).. común
 
 IMPORTANTE (acuerdo del grupo, octubre de 2026): los datos de los Módulos 2 y 3 se
