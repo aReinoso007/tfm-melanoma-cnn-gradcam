@@ -17,6 +17,7 @@ Director: Pablo Gimeno Jordan.
 | [docs/modulo1_datos.md](docs/modulo1_datos.md) | Pasos del Módulo 1: EDA, desbalance, partición y pipeline `tf.data` |
 | [docs/modulo2_entrenamiento_evaluacion.md](docs/modulo2_entrenamiento_evaluacion.md) | Pasos del Módulo 2: fine-tuning, selección y evaluación |
 | [docs/modulo2_registro_decisiones.md](docs/modulo2_registro_decisiones.md) | Módulo 2: qué se decidió, por qué y con qué evidencia |
+| [docs/modulo2_notas_memoria.md](docs/modulo2_notas_memoria.md) | Módulo 2: textos y cifras listos para redactar la memoria (limitaciones, hiperparámetros, esqueleto) |
 | [docs/modulo2_guia_colab.md](docs/modulo2_guia_colab.md) | Módulo 2: cómo ejecutar y verificar el paso 1 en Colab |
 | [docs/modulo3_gradcam.md](docs/modulo3_gradcam.md) | Pasos del Módulo 3: Grad-CAM, falsos negativos y ABCDE |
 

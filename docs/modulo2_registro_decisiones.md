@@ -6,18 +6,20 @@ Estado de las tareas: ver las casillas de [modulo2_entrenamiento_evaluacion.md](
 
 ## Resumen de decisiones del paso 1
 
+El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian confirmó D8 y el grupo ratificó D5 y D10 en la revisión). Las notas para redactar la memoria están en [modulo2_notas_memoria.md](modulo2_notas_memoria.md).
+
 | # | Decisión | Origen | ¿Revisar en el PR? |
 |---|---|---|---|
 | D1 | Rama `m2/<tarea>` (esta: `m2/modelos-metricas`) | Acordada | No |
 | D2 | Lógica en `src/`, notebooks solo la importan | Acordada | No |
-| D3 | Misma cabeza en las 3 redes; capas del backbone aplanadas; prefijo `head_`; el modelo no normaliza | Estructura acordada; capas aplanadas, implementación | Sí (nombres de capa que usará M3) |
+| D3 | Misma cabeza en las 3 redes; capas del backbone aplanadas; prefijo `head_`; el modelo no normaliza | Estructura acordada; capas aplanadas, implementación | Revisada y aprobada en el PR #7 |
 | D4 | Fase 1: base congelada, solo cabeza | Acordada | No |
-| D5 | Fase 2: 30 % final de las capas, BatchNormalization siempre congelada | Fracción y BN acordadas; conteo por capas, implementación | **Sí: 30 % de capas ≠ 30 % de parámetros (73 % / 41 % / 76 %)** |
+| D5 | Fase 2: 30 % final de las capas, BatchNormalization siempre congelada | Fracción y BN acordadas; conteo por capas, implementación | **Ratificada (4 nov): se mantiene y se declara como limitación en la memoria** (73 % / 41 % / 76 % de parámetros; ver `modulo2_notas_memoria.md` §1.1) |
 | D6 | Los helpers de congelado no compilan | Implementación | No |
 | D7 | Métricas con los nombres de la convención; definiciones estándar | Nombres acordados | No |
-| D8 | `predicciones_*.csv` con `y_true`/`y_pred` como nombre de clase | Columnas acordadas; nombres, implementación | **Sí: confirmar con M3** |
+| D8 | `predicciones_*.csv` con `y_true`/`y_pred` como nombre de clase | Columnas acordadas; nombres, implementación | **Confirmada por Christian (M3), 4 nov** |
 | D9 | Pruebas con `pytest` (22) | Implementación | No |
-| D10 | `deterministic=True` en los 9 runs (`training.deterministic` en `base.yaml`) | Medición propia | **Sí: cambia `base.yaml`, necesita aprobación de los tres** |
+| D10 | `deterministic=True` en los 9 runs (`training.deterministic` en `base.yaml`) | Medición propia | **Ratificada por el grupo (4 nov); el coste real por época se confirma en la prueba de `sandbox`** |
 | D11 | `sandbox` para pruebas; `m2-entrenamiento` y `m2-evaluacion-test` para lo oficial; `estado` a mano | Acordada (convenciones) | No |
 
 ## Conclusiones del paso 1 (4 nov 2026)
@@ -106,7 +108,7 @@ Rama: `m2/modelos-metricas` (antes `modulo-2`).
 | DenseNet121 | 426 | 128 | `conv4_block23_1_relu` | 2 862 087 | 40,6 % |
 | EfficientNetB0 | 237 | 71 | `block6a_dwconv` | 3 063 587 | 75,5 % |
 
-**Punto abierto para el grupo.** "30 % de las capas" no equivale a "30 % de los parámetros": en DenseNet121 se entrena el 41 % de los pesos y en ResNet50 y EfficientNetB0 más del 70 %, porque las últimas capas de estas redes concentran más parámetros. La regla es idéntica para las tres, así que cumple "mismos hiperparámetros base", pero es una limitación que hay que **mencionar en la memoria**. Si se prefiere igualar la cantidad de parámetros entrenables, habría que cambiar la regla de `base.yaml` y eso exige PR aprobado por los tres. No se cambia sin acuerdo.
+**Ratificado por el grupo (4 nov 2026): se mantiene la regla y se menciona como limitación en la memoria** (texto preparado en `modulo2_notas_memoria.md` §1.1). Contexto original: "30 % de las capas" no equivale a "30 % de los parámetros": en DenseNet121 se entrena el 41 % de los pesos y en ResNet50 y EfficientNetB0 más del 70 %, porque las últimas capas de estas redes concentran más parámetros. La regla es idéntica para las tres, así que cumple "mismos hiperparámetros base", pero es una limitación que hay que **mencionar en la memoria**. Si se prefiere igualar la cantidad de parámetros entrenables, habría que cambiar la regla de `base.yaml` y eso exige PR aprobado por los tres. No se cambia sin acuerdo.
 **Origen.** Fracción y BN congelada: acordadas (`base.yaml`). Conteo por capas: decisión de implementación.
 
 ### D6. Los helpers no compilan el modelo
@@ -135,7 +137,7 @@ Rama: `m2/modelos-metricas` (antes `modulo-2`).
 **Razón.**
 - El contrato M2→M3 fija las columnas pero no si las clases son índices o nombres. Con nombres el CSV se entiende solo y no depende de recordar el orden de `CLASES`; M3 filtra falsos negativos con `y_true == "mel"`.
 - Las probabilidades solo se pueden emparejar con las imágenes si están en el orden de `split_df()`. Un desorden no da error, simplemente asigna probabilidades a la imagen equivocada. Por eso la función comprueba longitud y que el split venga ordenado por `image_id`.
-**Pendiente.** Confirmar con Christian (M3) que nombres le sirven; si prefiere índices es un cambio de una línea.
+**Confirmado por Christian (M3) el 4 nov 2026:** los nombres de clase le sirven.
 **Origen.** Columnas acordadas; nombres frente a índices: decisión de implementación.
 
 ### D9. Pruebas automáticas
@@ -175,7 +177,7 @@ Lectura:
 - Sin determinismo, DenseNet121 y EfficientNetB0 ya difieren entre dos pasadas idénticas, aunque a un nivel de redondeo (≈10⁻⁷ en la pérdida tras 20 pasos). Aquí no se midió cuánto se amplifica esa diferencia a lo largo de un entrenamiento completo.
 - Las tres penalizaciones superan el umbral de 1,3× fijado antes de medir, así que **por la regla no hay decisión automática: la toma el grupo**.
 
-**Decisión adoptada (4 nov 2026): `deterministic=True` en las tres redes, de forma provisional**, sujeta a la ratificación del grupo en el PR y a la comprobación del coste real en `sandbox`. Queda reflejada en `configs/base.yaml` (`training.deterministic: true`).
+**Decisión adoptada y ratificada por el grupo (4 nov 2026): `deterministic=True` en las tres redes**, sujeta solo a la comprobación del coste real por época en `sandbox` (si la proyección supera ≈ 2 h por cuenta se vuelve a plantear). Queda reflejada en `configs/base.yaml` (`training.deterministic: true`).
 
 **Razonamiento.** El umbral de 1,3× era una aproximación a "el coste es asumible"; el coste absoluto, calculado con estos tiempos, es pequeño:
 
@@ -192,7 +194,7 @@ Son ≈ 26 min más por cuenta en el peor caso. Es un orden de magnitud, no una 
 - **Condición para confirmarlo:** en la prueba de `sandbox` (paso siguiente) se mide el tiempo real por época con el pipeline completo. Si la proyección a 45 épocas supera ≈ 2 h por cuenta, se vuelve a plantear al grupo.
 - Cualquiera que sea el modo, se registra en cada run como `deterministic` (junto con GPU y versión de TensorFlow). Si se confirma, se añadirá a `configs/base.yaml` (`training.deterministic: true`), cambio que necesita el PR aprobado por los tres.
 
-**Origen.** Medición propia; el modo definitivo lo ratifica el grupo en el PR. Cada run registra `deterministic`, `gpu` y `tf_version` (`docs/03_mlflow_convenciones.md` §4).
+**Origen.** Medición propia; ratificada por el grupo el 4 nov 2026. Cada run registra `deterministic`, `gpu` y `tf_version` (`docs/03_mlflow_convenciones.md` §4).
 
 ### D11. Dónde se registra cada run en MLflow
 
@@ -236,7 +238,7 @@ Las pérdidas del bloque 4 salen de 3 lotes de validación sin entrenar de verda
 
 ### Qué NO se hizo todavía (siguientes pasos)
 
-0. Que el grupo apruebe el PR de `m2/modelos-metricas`, con atención a D5, D8 y D10.
+0. ~~Aprobación del PR #7~~ (hecho el 4 nov 2026: D5, D8 y D10 ratificadas).
 1. Callback y bucle de entrenamiento de las dos fases (`f1_*`, `f2_*` en el mismo run, checkpoints en Drive, `BackupAndRestore`, interruptor `MODO`, registro de `deterministic`, `gpu` y `tf_version`).
 2. Prueba en `sandbox` con subconjunto pequeño y 2 épocas, en Colab con GPU: confirma además el tiempo real por época con `deterministic=True` (D10).
 3. Los 9 runs, la selección, la evaluación en prueba y el registro de modelos.
