@@ -278,6 +278,32 @@ def proyeccion_tiempo(s_por_paso: dict[str, dict[str, float]], pasos_por_epoca: 
 # Punto de entrada: un run completo con MLflow
 # ---------------------------------------------------------------------------
 
+def publicar_modelo(model, run_id: str | None = None, artifact_path: str = "modelo") -> None:
+    """Sube el modelo como artefacto del run, en el formato de `mlflow.tensorflow.load_model`.
+
+    MLflow 3 (`log_model(..., name="modelo")`) lo guarda como *Logged Model*, fuera de los
+    artefactos del run. El servidor de DagsHub no resuelve `runs:/<id>/modelo` hacia ese
+    objeto: la carga falla con "Failed to download artifacts from path 'modelo'" (Colab, 7 nov).
+    `save_model` escribe el mismo formato (`MLmodel` + pesos) y `log_artifacts` lo deja dentro
+    del run, que es lo que DagsHub sí sirve y lo que el M3 carga (`runs:/…` y, tras el alias,
+    `models:/ham10000-<arch>@final`). Sirve también con el run ya cerrado, pasando `run_id`.
+    """
+    import tempfile
+
+    import mlflow
+    from mlflow.tracking import MlflowClient
+
+    if run_id is None:
+        activo = mlflow.active_run()
+        if activo is None:
+            raise RuntimeError("publicar_modelo necesita un run activo o un run_id.")
+        run_id = activo.info.run_id
+    with tempfile.TemporaryDirectory() as d:
+        destino = os.path.join(d, artifact_path)
+        mlflow.tensorflow.save_model(model, path=destino)
+        MlflowClient().log_artifacts(run_id, destino, artifact_path=artifact_path)
+
+
 def _gpu() -> str:
     import tensorflow as tf
     gpus = tf.config.list_physical_devices("GPU")
@@ -379,7 +405,7 @@ def lanzar_run(arch: str, seed: int, cfg: dict, modo: str, autor: str, max_lotes
         preds = tabla_predicciones(df_val.iloc[:n], r["probs"])
         mlflow.log_text(preds.to_csv(index=False), "predicciones_val.csv")
         if registrar_modelo:
-            mlflow.tensorflow.log_model(model, name="modelo")
+            publicar_modelo(model)
         r["run_id"] = mlflow.active_run().info.run_id
     r["run_name"], r["state_dir"], r["tiempo_total_s"] = run_name, str(state_dir), time.time() - t0
     return r

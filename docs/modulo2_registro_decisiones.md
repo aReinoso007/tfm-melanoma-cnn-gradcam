@@ -26,6 +26,7 @@ El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian co
 | D14 | Una sola pasada de validación por época: `val_loss` sin pesos de clase y `val_macro_f1`, para parada y para el log | Implementación | Sí |
 | D15 | Reanudación tras desconexión de Colab: `BackupAndRestore` + estado en JSON en Drive + marca `<fase>_completa.json` | Acordada la idea (checkpoints en Drive); el diseño, implementación | Sí |
 | D16 | `lanzar_run(modo="sandbox"\|"real")`: en `real` no admite `epochs`/`max_lotes`, exige árbol limpio y confirmación explícita | Interruptor acordado en D11; las guardas, implementación | Sí |
+| D17 | El modelo se sube con `save_model` + `log_artifacts` (`modelo/`), no con `log_model` de MLflow 3 | Implementación (DagsHub no sirve el Logged Model) | Sí |
 
 ## Conclusiones del paso 1 (4 nov 2026)
 
@@ -210,7 +211,7 @@ Son ≈ 26 min más por cuenta en el peor caso. Es un orden de magnitud, no una 
 
 La validación (1 502 imágenes, solo hacia delante) no entra en `s_por_paso`. Añadirle un 10 % deja el total en torno a 90 min, por debajo de las ≈ 2 h. **La condición se cumple y se mantiene `deterministic=True`.** El cálculo previo del banco, sin lectura de datos, daba ≈ 74 min: el pipeline completo no cambia el orden de magnitud.
 
-En DenseNet121 la última época de la fase 1 salió más lenta que la de la fase 2 (335 frente a 180 ms/paso). Lo esperable es lo contrario, porque la fase 2 entrena más capas. Con solo dos épocas, esa última de la fase 1 puede seguir incluyendo el calentamiento de `tf.data`, así que 83 min es un techo. Los `val_macro_f1` de estos runs (0,426, 0,428 y 0,313) son de cuatro épocas y no se citan. Runs en `sandbox`: `51776efe5975433eb0f473a30c7b8989`, `9e97c522ffc949e5b3d94ae32275a10d`, `ad3fdffd95e04be4a6484f1019a77e35`. Las tres líneas `[+]` se imprimen después de `mlflow.tensorflow.log_model`, así que DagsHub aceptó el modelo.
+En DenseNet121 la última época de la fase 1 salió más lenta que la de la fase 2 (335 frente a 180 ms/paso). Lo esperable es lo contrario, porque la fase 2 entrena más capas. Con solo dos épocas, esa última de la fase 1 puede seguir incluyendo el calentamiento de `tf.data`, así que 83 min es un techo. Los `val_macro_f1` de estos runs (0,426, 0,428 y 0,313) son de cuatro épocas y no se citan. Runs en `sandbox`: `51776efe5975433eb0f473a30c7b8989`, `9e97c522ffc949e5b3d94ae32275a10d`, `ad3fdffd95e04be4a6484f1019a77e35`. La carga del modelo en esa misma sesión falló: ver D17.
 
 **Origen.** Medición propia; ratificada por el grupo el 4 nov 2026. Cada run registra `deterministic`, `gpu` y `tf_version` (`docs/03_mlflow_convenciones.md` §4).
 
@@ -319,12 +320,20 @@ Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la
 
 **Razón.** Es el interruptor prometido en D11. Las guardas hacen imposible, por un descuido, que un run acortado o hecho con código sin commitear acabe en el experimento oficial. Los estados en carpetas distintas evitan que un ensayo `sandbox` "complete" una fase que luego el run real daría por entrenada. Con `max_lotes`, el dataset se recorre entero una vez antes de medir para que la caché de `tf.data` esté caliente y el `s_por_paso` sea el real y no el del primer pase (que incluye decodificar JPEG).
 
+### D17. El modelo va como artefacto del run, no como Logged Model
+
+**Decisión.** `publicar_modelo()` guarda el modelo con `mlflow.tensorflow.save_model` y lo sube con `MlflowClient.log_artifacts(..., artifact_path="modelo")`. Se carga con `mlflow.tensorflow.load_model("runs:/<id>/modelo")`, que es la ruta que el registro de modelos convierte luego en `models:/ham10000-<arch>@final`.
+
+**Razón.** En MLflow 3, `log_model(..., name="modelo")` no escribe en los artefactos del run: crea un *Logged Model* aparte. Con un servidor completo (SQLite local, 4 nov) `runs:/<id>/modelo` sí resuelve. DagsHub no: el 7 nov, con los tres runs de `sandbox` ya creados, la sección 4 del notebook falló con `Failed to download artifacts from path 'modelo'`. Los demás artefactos del mismo run (`curvas.png`, el CSV) sí estaban. El formato en disco es el mismo (`MLmodel` + pesos); cambia solo dónde se sube, y ese sitio es el que DagsHub ya sirve.
+
+**Cómo se recupera lo ya entrenado.** Los pesos de la fase 2 siguen en Drive (`f2_mejor.weights.h5`). La sección 4, si no encuentra `modelo/`, reconstruye la red, carga esos pesos y los publica en el run cerrado. No hace falta repetir las 2+2 épocas.
+
 ### Verificación local del paso 2 (4 nov 2026)
 
 - `pytest tests -q`: 28 pruebas en verde (22 de modelos y métricas y 6 nuevas de entrenamiento), 56 s en el portátil.
-- **Ejecución de extremo a extremo en el portátil** (CPU, sin GPU, imágenes reales de `documentos-drive/`, EfficientNetB0 con ImageNet, 2 lotes por época, 1+1 épocas, MLflow local con SQLite): el run se crea con las etiquetas esperadas (`modulo=m2`, `fase=entrenamiento`, `modo=sandbox`, `arch`, `seed`), registra 61 métricas, los parámetros `deterministic=True`, `tf_version=2.21.0`, `gpu=sin GPU`, `n_capas_descongeladas=71`, y los 4 artefactos (`curvas.png`, `confusion_val_norm.png`, `classification_report_val.json`, `predicciones_val.csv`). El modelo se registra con `mlflow.tensorflow.log_model(..., name="modelo")` y **se vuelve a cargar con `mlflow.tensorflow.load_model("runs:/<id>/modelo")`** (el mismo mecanismo que usará M3): `Functional`, salida `(None, 7)`.
+- **Ejecución de extremo a extremo en el portátil** (CPU, sin GPU, imágenes reales de `documentos-drive/`, EfficientNetB0 con ImageNet, 2 lotes por época, 1+1 épocas, MLflow local con SQLite): el run se crea con las etiquetas esperadas (`modulo=m2`, `fase=entrenamiento`, `modo=sandbox`, `arch`, `seed`), registra 61 métricas, los parámetros `deterministic=True`, `tf_version=2.21.0`, `gpu=sin GPU`, `n_capas_descongeladas=71`, y los 4 artefactos (`curvas.png`, `confusion_val_norm.png`, `classification_report_val.json`, `predicciones_val.csv`). Con el servidor SQLite local, `mlflow.tensorflow.log_model(..., name="modelo")` se vuelve a cargar con `mlflow.tensorflow.load_model("runs:/<id>/modelo")`: `Functional`, salida `(None, 7)`. Ese atajo no existe en DagsHub (D17): allí el modelo tiene que ir como artefacto del run.
 - Los tiempos de esa ejecución (≈ 2,5 y 3,3 s/paso) son de CPU y **no valen para nada** salvo para comprobar que el campo se registra; el coste real se mide en la GPU de Colab.
-- DagsHub aceptó `log_model` en los tres runs de la prueba del 7 nov (la línea `[+]` se imprime después). La celda que vuelve a cargar el modelo y compara probabilidades no está en la salida guardada.
+- La celda de carga contra DagsHub falló el 7 nov (D17). El arreglo sube `modelo/` como artefacto del run.
 
 ### Verificación en Colab del paso 2 (7 nov 2026, `m2_01_entrenamiento.ipynb`, `MODO = "sandbox"`)
 
@@ -332,7 +341,7 @@ Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la
 |---|---|
 | Tres redes, 2+2 épocas, datos completos, semilla 42, `deterministic=True` | Sin error. Tiempos de pared: ResNet50 6,3 min, DenseNet121 7,0 min, EfficientNetB0 4,4 min (incluyen el primer epoch en frío y la validación) |
 | Proyección de peor caso | 29,3 + 38,2 + 15,6 = **83,1 min por cuenta**. Condición de D10 cumplida |
-| Registro del modelo en DagsHub | Los tres runs devolvieron `run_id`; `log_model` va antes de ese retorno |
+| Registro del modelo en DagsHub | `log_model` no dejó un artefacto cargable. Fallo y arreglo en D17 |
 
 **No hecho en esta sesión:** la prueba de reanudación de `modulo2_guia_colab.md` §6.3 (parar a mitad y volver a lanzar). La lógica está cubierta por `tests/test_training.py` con una desconexión simulada; en Colab queda por ver una sola vez, y no bloquea el PR.
 

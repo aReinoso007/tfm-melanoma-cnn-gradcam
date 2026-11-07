@@ -136,6 +136,6 @@ Si el entorno se reinició de verdad (no solo se detuvo la celda), hay que volve
 | `error: pathspec 'm2/entrenamiento' did not match` | Rama sin subir | `git push -u origin m2/entrenamiento` |
 | `OOM` / `ResourceExhaustedError` en una red | Memoria de GPU o de RAM (caché de `tf.data`) | Copiar el mensaje completo; no cambiar `batch_size` por tu cuenta (es de `base.yaml` y afecta a las tres redes) |
 | Error de operación no determinista en ResNet50 o DenseNet121 | Es el riesgo residual de D10 | Copiar el mensaje completo y avisar: la salida (`deterministic=False`) es del grupo |
-| Error en `mlflow.tensorflow.log_model` contra DagsHub | DagsHub puede no aceptar el formato de modelo de MLflow 3 | Copiar el mensaje completo; la alternativa es registrar el modelo como artefacto y no como modelo de MLflow, decisión que afecta a M3 |
+| `Failed to download artifacts from path 'modelo'` | El run se creó con `log_model` de MLflow 3, que DagsHub no sirve en `runs:/<id>/modelo` | `git pull` de `m2/entrenamiento` y volver a ejecutar la sección 4: publica el modelo desde los pesos de Drive, sin reentrenar (D17) |
 | Proyección de coste > 120 min por cuenta | Determinismo más caro de lo medido | No lanzar runs reales; llevarlo al grupo (D10) |
 | `RuntimeError: Hay cambios sin commit` (modo real) | El árbol de Colab tiene cambios | Volver a clonar o `git checkout .`; los runs oficiales salen de código commiteado |

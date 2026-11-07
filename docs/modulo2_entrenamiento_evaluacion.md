@@ -34,7 +34,7 @@ Entrenar las tres arquitecturas bajo condiciones idénticas, seleccionar el mejo
 ### 4. Evaluación en validación (por run)
 - [x] Predicciones en validación → `predicciones_val.csv` (probabilidades de las 7 clases).
 - [x] Todas las métricas `val_*`, la matriz de confusión normalizada por filas y el `classification_report`.
-- [x] Registrar el modelo con `mlflow.tensorflow.log_model`. Funciona con MLflow local y recarga con `load_model`; **falta confirmarlo contra DagsHub en Colab**.
+- [x] Registrar el modelo de forma que `mlflow.tensorflow.load_model("runs:/<id>/modelo")` funcione en DagsHub. `log_model` de MLflow 3 no sirve ahí (D17); se usa `publicar_modelo()`. Falta repetir la celda de carga en Colab sobre los tres runs de `sandbox`.
 - [ ] Repetir para 3 arquitecturas × 3 semillas = **9 runs**.
 
 ### 5. Selección (en validación, con la media de las 3 semillas)

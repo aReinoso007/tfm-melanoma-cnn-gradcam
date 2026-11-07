@@ -16,7 +16,7 @@ keras = tf.keras
 
 from src.models import build_model, congelar_base
 from src.training import (ControlFase, entrenar_fase, entrenar_run, figura_confusion, figura_curvas,
-                          lanzar_run, proyeccion_tiempo)
+                          lanzar_run, proyeccion_tiempo, publicar_modelo)
 
 with open("configs/base.yaml", encoding="utf-8") as f:
     CFG = yaml.safe_load(f)
@@ -130,6 +130,27 @@ def test_lanzar_run_real_no_admite_acortar_ni_git_sucio(monkeypatch):
     monkeypatch.setattr(tr, "git_dirty", lambda: True)
     with pytest.raises(RuntimeError, match="git_dirty"):
         lanzar_run("resnet50", 42, CFG, "real", "alex")
+
+
+def test_publicar_modelo_se_recarga_desde_el_run(tmp_path, monkeypatch):
+    """El modelo queda como artefacto del run, también si el run ya está cerrado.
+
+    Es el contrato con DagsHub: `log_model` de MLflow 3 no deja nada en `runs:/<id>/modelo`.
+    """
+    import mlflow
+    from mlflow.tracking import MlflowClient
+
+    mlflow.set_tracking_uri("sqlite:///" + str(tmp_path / "mlflow.db"))
+    monkeypatch.setenv("MLFLOW_DISABLE_AGENT_HINT", "1")
+    mlflow.set_experiment("probe")
+    m = keras.Sequential([keras.layers.Input((4,)), keras.layers.Dense(3, activation="softmax")])
+    with mlflow.start_run() as run:
+        rid = run.info.run_id
+    publicar_modelo(m, run_id=rid)
+    assert "modelo" in [a.path for a in MlflowClient().list_artifacts(rid)]
+    cargado = mlflow.tensorflow.load_model(f"runs:/{rid}/modelo")
+    x = np.zeros((2, 4), dtype="float32")
+    assert cargado.predict(x, verbose=0).shape == (2, 3)
 
 
 def test_proyeccion_tiempo_y_figuras():
