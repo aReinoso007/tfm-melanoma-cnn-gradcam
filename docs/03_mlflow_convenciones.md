@@ -7,7 +7,8 @@ El objetivo es que **cualquier número o figura de la memoria pueda rastrearse h
 | Experimento | Módulo | Contenido |
 |---|---|---|
 | `m1-datos` | M1 | EDA, partición, pesos de clase |
-| `m2-entrenamiento` | M2 | 9 runs de entrenamiento (3 arquitecturas × 3 semillas), evaluados en validación |
+| `m2-entrenamiento` | M2 | 9 runs de la v1 (aumento selectivo), evaluados en validación. Cerrado. |
+| `m2-entrenamiento-v2` | M2 | 9 runs de la v2 (aumento uniforme, D19). Mismo nombre de run. |
 | `m2-evaluacion-test` | M2 | 3 runs, uno por arquitectura, **ejecutados una sola vez** |
 | `m3-gradcam` | M3 | Mapas Grad-CAM, análisis de FN y anotación ABCDE |
 | `sandbox` | Todos | Pruebas y depuración. **Nada de aquí se cita en la memoria.** |
@@ -45,7 +46,9 @@ Se registra **toda la configuración** de `configs/base.yaml` (aplanada) más lo
 ## 5. Métricas
 
 **Durante el entrenamiento** (por época, `step=epoch`):
-`f1_loss`, `f1_val_loss`, `f1_val_macro_f1`, `f2_loss`, `f2_val_loss`, `f2_val_macro_f1`
+`f1_loss`, `f1_val_loss`, `f1_val_macro_f1`, `f1_val_sens_mel`, `f2_loss`, `f2_val_loss`, `f2_val_macro_f1`, `f2_val_sens_mel`
+
+En la v2, al cerrar el run y solo sobre validación: `val_frac_nv_limpio`, `val_frac_nv_aumentado`, `val_sens_mel_limpio`, `val_sens_mel_aumentado`, `val_delta_frac_nv`. Si `val_delta_frac_nv` supera 0,20, el tag `alarma_atajo` queda en `true`.
 
 **Al final de cada run en validación:**
 ```

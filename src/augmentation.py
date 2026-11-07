@@ -1,15 +1,16 @@
-"""Aumento de datos del Módulo 1 (Etapa 6). Solo se aplica en entrenamiento.
+"""Aumento de datos. Solo se aplica en entrenamiento.
 
 Entrada: imagen float32 (H, W, 3) en [0, 255], ya recortada y redimensionada
 (después de la caché del pipeline). Salida: misma forma y rango.
 
 Todas las operaciones son "stateless": dado el mismo `seed` (tensor int64 de 2 valores)
-la imagen aumentada es siempre la misma. El pipeline (Etapa 7) genera un seed distinto
-por imagen y época, así que cada época ve variantes nuevas y el resultado es reproducible.
+la imagen aumentada es siempre la misma. El pipeline genera un seed distinto por imagen
+y época, así que cada época ve variantes nuevas y el resultado es reproducible.
 
-Dos intensidades (aumento selectivo):
-  - fuerte (todas las clases salvo nv): volteos, rotación, zoom, brillo y contraste.
-  - ligero (nv): solo volteos horizontal y vertical, que no pierden ni inventan píxeles.
+Desde la v2 (D19) las siete clases reciben la misma transformación: volteos, rotación,
+acercamiento, brillo y contraste. En la v1, nv solo recibía volteos, y esa diferencia
+se convirtió en un atajo hacia nv. `etiqueta` se mantiene en la firma porque el
+pipeline la pasa, y no cambia el aumento.
 """
 import math
 import tensorflow as tf
@@ -20,7 +21,6 @@ CLASES = ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"]
 # Revisión visual (315 variantes, 35 lesiones, revisor no dermatólogo): oscurecimiento leve en el 5,6 %
 # sin pérdida de los rasgos de la lesión; el zoom toca la lesión en el 0,7 %. Se mantienen los valores.
 CONFIG_POR_DEFECTO = {
-    "apply_to": ["akiec", "bcc", "bkl", "df", "mel", "vasc"],   # intensidad fuerte
     "horizontal_flip": True,
     "vertical_flip": True,
     "rotation_factor": 0.25,    # fracción de vuelta: ±0,25 × 360° = ±90°. Con los dos volteos cubre los 360°
@@ -79,16 +79,10 @@ def _fuerte(img, seed, cfg):
         img = tf.image.stateless_random_contrast(img, 1.0 - f, 1.0 + f, s_con)
     return tf.clip_by_value(img, 0.0, 255.0)
 
-def _ligero(img, seed, cfg):
-    return _voltear(img, seed, cfg)
-
 def augmentar(img, etiqueta, seed, cfg=None):
-    """Aumenta UNA imagen según su clase. `etiqueta` = índice de clase (orden de CLASES)."""
+    """Aumenta UNA imagen. `etiqueta` no cambia la transformación: las siete clases usan la misma."""
     cfg = {**CONFIG_POR_DEFECTO, **(cfg or {})}
-    fuertes = tf.constant([CLASES.index(c) for c in cfg["apply_to"]], dtype=tf.int32)
-    es_fuerte = tf.reduce_any(tf.equal(tf.cast(etiqueta, tf.int32), fuertes))
-    img = tf.cast(img, tf.float32)
-    return tf.cond(es_fuerte, lambda: _fuerte(img, seed, cfg), lambda: _ligero(img, seed, cfg))
+    return _fuerte(tf.cast(img, tf.float32), seed, cfg)
 
 def preparar(img, etiqueta, seed, training, cfg=None):
     """Punto de entrada del pipeline: aumenta solo si training=True; si no, devuelve la imagen tal cual."""

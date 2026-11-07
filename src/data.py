@@ -85,7 +85,7 @@ def make_dataset(split: str, arch: str, training: bool, batch_size: int = BATCH_
                  one_hot: bool = True, cache: bool = True) -> tf.data.Dataset:
     """Devuelve (imagen normalizada para `arch`, etiqueta) en lotes.
 
-    training=True: baraja en cada época y aplica el aumento selectivo. Solo para split="train".
+    training=True: baraja en cada época y aplica el aumento uniforme (D19). Solo para split="train".
     training=False: sin barajar ni aumentar; el orden es el de split_df(split).
     """
     assert arch in ARQUITECTURAS, arch

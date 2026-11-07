@@ -95,20 +95,31 @@ class EvaluarValidacion(keras.callbacks.Callback):
         p_ok = np.clip(probs[np.arange(n), y], 1e-7, 1.0)
         logs["val_loss"] = float(-np.log(p_ok).mean())
         logs["val_macro_f1"] = macro_f1_rapido(y, probs)
+        mel = CLASES.index("mel")
+        es_mel = y == mel
+        logs["val_sens_mel"] = float((probs.argmax(1)[es_mel] == mel).mean()) if es_mel.any() else float("nan")
 
         ep = self.offset + epoch + 1
         f = self.fase
+        sens = logs["val_sens_mel"]
         fila = {"epoca": ep, "fase": f, "loss": float(logs["loss"]), "val_loss": logs["val_loss"],
-                "val_macro_f1": logs["val_macro_f1"], "s_epoca": round(t_train, 2),
+                "val_macro_f1": logs["val_macro_f1"],
+                "val_sens_mel": None if math.isnan(sens) else sens,
+                "s_epoca": round(t_train, 2),
                 "s_por_paso": round(t_train / max(self._lotes, 1), 4), "pasos": self._lotes}
         self.historial = [h for h in self.historial if h["epoca"] != ep] + [fila]
         _escribir_json(self.f_hist, self.historial)
         if self.registrar:
-            self.registrar({f"{f}_loss": fila["loss"], f"{f}_val_loss": fila["val_loss"],
-                            f"{f}_val_macro_f1": fila["val_macro_f1"],
-                            f"{f}_s_por_paso": fila["s_por_paso"]}, ep)
+            metricas = {f"{f}_loss": fila["loss"], f"{f}_val_loss": fila["val_loss"],
+                        f"{f}_val_macro_f1": fila["val_macro_f1"],
+                        f"{f}_s_por_paso": fila["s_por_paso"]}
+            if fila["val_sens_mel"] is not None:
+                metricas[f"{f}_val_sens_mel"] = fila["val_sens_mel"]
+            self.registrar(metricas, ep)
+        sens_txt = "nan" if fila["val_sens_mel"] is None else f"{fila['val_sens_mel']:.4f}"
         print(f"[{f}] época {ep:02d}  loss={fila['loss']:.4f}  val_loss={fila['val_loss']:.4f}  "
-              f"val_macro_f1={fila['val_macro_f1']:.4f}  ({fila['s_por_paso']*1000:.0f} ms/paso)")
+              f"val_macro_f1={fila['val_macro_f1']:.4f}  val_sens_mel={sens_txt}  "
+              f"({fila['s_por_paso']*1000:.0f} ms/paso)")
 
 
 class ControlFase(keras.callbacks.Callback):
@@ -315,13 +326,76 @@ def _gpu() -> str:
         return "GPU"
 
 
+def resumen_regresion_atajo(frac_limpio: float, fracs_aumentado, sens_limpio: float,
+                            sens_aumentado, umbral: float) -> dict:
+    """Compara la validación limpia con la media de la validación aumentada.
+
+    `delta_frac_nv` es la fracción predicha nv sin aumento menos la media con aumento
+    forzado. En v1 ese hueco fue de 0,45 a 0,58. La alarma salta por encima de `umbral`.
+    """
+    media_nv = float(np.mean(fracs_aumentado))
+    media_mel = float(np.mean(sens_aumentado))
+    delta = float(frac_limpio - media_nv)
+    return {
+        "val_frac_nv_limpio": float(frac_limpio),
+        "val_frac_nv_aumentado": media_nv,
+        "val_sens_mel_limpio": float(sens_limpio),
+        "val_sens_mel_aumentado": media_mel,
+        "val_delta_frac_nv": delta,
+        "alarma_atajo": bool(delta > umbral),
+    }
+
+
+def _predecir_val_aumentada(model, arch: str, df_val: pd.DataFrame, semilla: int,
+                            images_dir, batch_size: int):
+    """Validación con el aumento fuerte en todas las imágenes, sin barajar."""
+    import tensorflow as tf
+    from src.augmentation import CONFIG_POR_DEFECTO, _fuerte
+    from src.data import _cargar, normalizar
+
+    rutas = [str(Path(images_dir) / f"{i}.jpg") for i in df_val.image_id]
+    n = len(rutas)
+    seeds = np.stack([np.full(n, semilla, np.int64), np.arange(n, dtype=np.int64)], axis=1)
+    ds = tf.data.Dataset.from_tensor_slices((rutas, seeds))
+
+    def _una(ruta, seed):
+        img = _fuerte(tf.cast(_cargar(ruta), tf.float32), seed, CONFIG_POR_DEFECTO)
+        return normalizar(img, arch)
+
+    ds = ds.map(_una, num_parallel_calls=tf.data.AUTOTUNE)
+    ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    return model.predict(ds, verbose=0)
+
+
+def regresion_atajo(model, arch: str, df_val: pd.DataFrame, probs_limpias, cfg: dict) -> dict:
+    """Prueba de regresión del atajo, sobre validación. No lee el conjunto de prueba."""
+    aug = cfg["data"]["augmentation"]
+    y = df_val.label.to_numpy()
+    pred = np.asarray(probs_limpias).argmax(1)
+    nv, mel = CLASES.index("nv"), CLASES.index("mel")
+    frac_limpio = float((pred == nv).mean())
+    sens_limpio = float((pred[y == mel] == mel).mean()) if (y == mel).any() else float("nan")
+    fracs, sens = [], []
+    images_dir = cfg["paths"]["images_dir"]
+    for semilla in aug["semillas_regresion"]:
+        probs = _predecir_val_aumentada(model, arch, df_val, int(semilla), images_dir,
+                                        cfg["training"]["batch_size"])
+        if len(probs) != len(df_val):
+            raise RuntimeError(f"Regresión del atajo: {len(df_val)} imágenes y {len(probs)} predicciones")
+        p = probs.argmax(1)
+        fracs.append(float((p == nv).mean()))
+        sens.append(float((p[y == mel] == mel).mean()) if (y == mel).any() else float("nan"))
+    return resumen_regresion_atajo(frac_limpio, fracs, sens_limpio, sens, float(aug["alarma_delta_frac_nv"]))
+
+
 def lanzar_run(arch: str, seed: int, cfg: dict, modo: str, autor: str, max_lotes: int | None = None,
                epochs: tuple[int, int] | None = None, registrar_modelo: bool = True,
                precalentar: bool | None = None, data_kwargs: dict | None = None,
                model_kwargs: dict | None = None) -> dict:
     """Un run completo (arquitectura × semilla) registrado en MLflow.
 
-    modo="real"    -> experimento `m2-entrenamiento`, run `m2-<arch>-s<seed>`. Exige git limpio.
+    modo="real"    -> experimento `m2-entrenamiento-v2`, run `m2-<arch>-s<seed>`,
+                      checkpoints en `checkpoints-v2`. Exige git limpio. El experimento v1 no se toca.
     modo="sandbox" -> experimento `sandbox`, run `m2-<arch>-s<seed>-sandbox`; permite acortar con
                       `epochs=(e1, e2)` y `max_lotes` (nº de lotes de train y de validación).
     En real `epochs` y `max_lotes` no se pueden usar: los 9 runs deben ser idénticos.
@@ -331,7 +405,8 @@ def lanzar_run(arch: str, seed: int, cfg: dict, modo: str, autor: str, max_lotes
     import mlflow
     import tensorflow as tf
     from src.data import load_class_weights, make_dataset, split_df
-    from src.tracking import (git_dirty, log_config, set_seeds, standard_tags, start_or_resume_run)
+    from src.tracking import (file_sha256, git_dirty, log_config, set_seeds, standard_tags,
+                              start_or_resume_run)
 
     assert modo in ("real", "sandbox"), modo
     t = cfg["training"]
@@ -341,9 +416,9 @@ def lanzar_run(arch: str, seed: int, cfg: dict, modo: str, autor: str, max_lotes
         if git_dirty():
             raise RuntimeError("Hay cambios sin commit: un run real con git_dirty=true no vale como "
                                "resultado final. Haz commit y push antes de lanzarlo.")
-        experimento = cfg["mlflow"]["experiments"]["m2_train"]
+        experimento = cfg["mlflow"]["experiments"]["m2_train_v2"]
         run_name = f"m2-{arch}-s{seed}"
-        state_dir = Path(cfg["paths"]["checkpoints_dir"]) / run_name
+        state_dir = Path(cfg["paths"]["checkpoints_v2_dir"]) / run_name
     else:
         experimento = cfg["mlflow"]["experiments"]["sandbox"]
         run_name = f"m2-{arch}-s{seed}-sandbox"
@@ -362,7 +437,10 @@ def lanzar_run(arch: str, seed: int, cfg: dict, modo: str, autor: str, max_lotes
 
     model = build_model(arch, dropout=t["dropout"], **(model_kwargs or {}))
     mlflow.set_experiment(experimento)
-    tags = standard_tags(cfg, modulo="m2", fase="entrenamiento", autor=autor, arch=arch, seed=seed, modo=modo)
+    tags = standard_tags(cfg, modulo="m2", fase="entrenamiento", autor=autor, arch=arch, seed=seed,
+                         modo=modo, aumento=cfg["data"]["augmentation"]["politica"],
+                         augmentation_py_sha256=file_sha256("src/augmentation.py"),
+                         base_yaml_sha256=file_sha256("configs/base.yaml"))
     t0 = time.time()
 
     with start_or_resume_run(run_name, state_dir, tags=tags):
@@ -371,6 +449,7 @@ def lanzar_run(arch: str, seed: int, cfg: dict, modo: str, autor: str, max_lotes
                            "tf_version": tf.__version__, "keras_version": keras.__version__,
                            "epochs_f1_usadas_max": (epochs or (t["phase1"]["epochs"], t["phase2"]["epochs"]))[0],
                            "epochs_f2_usadas_max": (epochs or (t["phase1"]["epochs"], t["phase2"]["epochs"]))[1]})
+        mlflow.set_tags({"gpu": _gpu(), "tf_version": tf.__version__})
 
         def registrar(metricas, paso):
             mlflow.log_metrics(metricas, step=paso)
@@ -406,6 +485,18 @@ def lanzar_run(arch: str, seed: int, cfg: dict, modo: str, autor: str, max_lotes
         mlflow.log_text(preds.to_csv(index=False), "predicciones_val.csv")
         if registrar_modelo:
             publicar_modelo(model)
+        if modo == "real":
+            reg = regresion_atajo(model, arch, df_val.iloc[:n], r["probs"], cfg)
+            mlflow.log_metrics({k: v for k, v in reg.items() if k != "alarma_atajo" and not math.isnan(v)})
+            mlflow.set_tag("alarma_atajo", str(reg["alarma_atajo"]).lower())
+            r["regresion"] = reg
+            if reg["alarma_atajo"]:
+                print(f"[!] ALARMA de atajo: la fracción nv baja {reg['val_delta_frac_nv']:.3f} "
+                      f"al forzar el aumento (umbral {cfg['data']['augmentation']['alarma_delta_frac_nv']}). "
+                      "El run se marca final, pero el piloto no pasa: no lances el resto.")
+            else:
+                print(f"[+] Regresión del atajo: delta frac nv = {reg['val_delta_frac_nv']:.3f}")
+            mlflow.set_tag("estado", "final")
         r["run_id"] = mlflow.active_run().info.run_id
     r["run_name"], r["state_dir"], r["tiempo_total_s"] = run_name, str(state_dir), time.time() - t0
     return r

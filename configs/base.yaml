@@ -4,12 +4,15 @@
 # Los valores marcados como "propuesta" deben confirmarse con una prueba en sandbox.
 # La sección data la fija el Módulo 1 (decisiones y evidencia en su registro de decisiones).
 
+config_version: 2                       # v1: aumento selectivo (m2-entrenamiento). v2: aumento uniforme (D19).
+
 mlflow:
   repo_owner: "aReinoso007"                 # usuario u organización en DagsHub
   repo_name: "tfm-melanoma-cnn-gradcam"
   experiments:
     m1: "m1-datos"
-    m2_train: "m2-entrenamiento"
+    m2_train: "m2-entrenamiento"            # v1, cerrado. No se le añaden runs.
+    m2_train_v2: "m2-entrenamiento-v2"
     m2_test: "m2-evaluacion-test"
     m3: "m3-gradcam"
     sandbox: "sandbox"
@@ -20,7 +23,8 @@ paths:
   local_data_dir: "/content/data/HAM10000"                      # se descomprime aquí en cada sesión
   images_dir: "/content/data/HAM10000/images"
   metadata_csv: "/content/data/HAM10000/HAM10000_metadata.csv"
-  checkpoints_dir: "/content/drive/MyDrive/TFM/checkpoints"     # sobrevive a desconexiones
+  checkpoints_dir: "/content/drive/MyDrive/TFM/checkpoints"     # v1
+  checkpoints_v2_dir: "/content/drive/MyDrive/TFM/checkpoints-v2"
   split_csv: "data/splits/split_v1.csv"
 
 data:
@@ -34,8 +38,8 @@ data:
     crop: "center"                           # 600×450 -> 450×450 (75 px por lado); conserva la forma (criterio A)
     resize_method: "area"                    # 450×450 -> 224×224
     cache: "memoria_uint8"
-  augmentation:                              # solo entrenamiento (Módulo 1, Etapa 6; src/augmentation.py)
-    apply_to: ["akiec", "bcc", "bkl", "df", "mel", "vasc"]   # aumento completo
+  augmentation:                              # v2 (D19): la misma transformación para las siete clases
+    politica: "uniforme"
     horizontal_flip: true
     vertical_flip: true
     rotation_factor: 0.25                    # ±90°; con los volteos cubre los 360°
@@ -43,9 +47,8 @@ data:
     brightness_delta: 0.1
     contrast_factor: 0.1
     fill_mode: "REFLECT"                     # relleno al rotar; el negro imitaría la viñeta del dermatoscopio
-  light_augmentation:                        # clases fuera de apply_to: solo volteos
-    classes: ["nv"]
-    transforms: ["horizontal_flip", "vertical_flip"]
+    semillas_regresion: [11, 22, 33]         # prueba de regresión del atajo, al final de cada run
+    alarma_delta_frac_nv: 0.20               # salta si frac_nv limpia − aumentada supera este valor
   class_weighting: "sqrt"                    # pesos suavizados normalizados a peso medio 1 (data/splits/class_weights.json)
 
 training:
