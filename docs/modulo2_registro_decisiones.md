@@ -355,7 +355,7 @@ Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la
 
 ## Runs reales — las 9 ejecuciones (7 nov 2026)
 
-Experimento `m2-entrenamiento`. Modo `real`, `main`, `deterministic=True`. Semilla 42 Alex, 123 Adrián, 2024 Christian. El `val_macro_f1` y la sensibilidad son los de la línea `[+]`: el modelo guardado, que es el mejor de la fase 2. La selección oficial todavía no está hecha: faltan en esta tabla `val_mel_precision`, `val_min_class_sensitivity` y `val_balanced_accuracy`, que están en cada run.
+Experimento `m2-entrenamiento`. Modo `real`, `main`, `deterministic=True`. Semilla 42 Alex, 123 Adrián, 2024 Christian. El `val_macro_f1` y la sensibilidad son los de la línea `[+]`: el modelo guardado, que es el mejor de la fase 2. La selección oficial, con el resto de métricas, está en D18.
 
 | Run | run_id | Tiempo | Épocas f1 / f2 | Mejor `val_loss` f1 (época de la fase) | Mejor `val_loss` f2 | `val_macro_f1` del modelo guardado | `val_mel_sensitivity` |
 |---|---|---|---|---|---|---|---|
@@ -383,5 +383,13 @@ Media ± desviación estándar (n−1) del modelo guardado, con los tres decimal
 
 - La parada anticipada funcionó en los nueve. Ninguna fase agotó sus 15 o 30 épocas. Cada cuenta tardó entre 37 y 41 min, por debajo de los 83 min de peor caso de D10.
 - En los nueve runs, el mejor `val_loss` de la fase 2 es el de su primera época, y es peor que el mejor de la fase 1. Al descongelar, la pérdida de entrenamiento baja y la de validación sube, y no se recupera dentro de la paciencia. El modelo guardado es ese por D13. El protocolo no se reescribe a posteriori: los nueve ya se entrenaron con la misma regla. `f1_mejor_val_loss` y `f2_mejor_val_loss` quedan en cada run para la memoria.
-- Ninguna semilla llega a sensibilidad en melanoma de 0,80. La primera condición de la regla de selección falla en las tres arquitecturas, así que la regla cae en su último paso (la mayor sensibilidad en melanoma) salvo que al leer el resto de métricas del run aparezca otra cosa. Con estas cifras redondeadas, esa sensibilidad media es 0,121 en DenseNet121, 0,082 en ResNet50 y 0,016 en EfficientNetB0. La decisión se cierra al escribir `seleccion.json` con las métricas completas de MLflow, no con esta tabla.
 - La recarga del modelo quedó comprobada en las tres semillas (7 nov): `load_model("runs:/<id>/modelo")` da salida `(None, 7)` y las mismas probabilidades del entrenamiento.
+- La selección con las métricas completas está en D18. Esta tabla, redondeada desde la consola, no es la decisión.
+
+### D18. Cómo se aplica la regla de selección
+
+**Decisión.** `src/selection.py` lee los 9 runs con `estado=final` y nombre `m2-<arch>-s<semilla>`. La media y la desviación estándar (n−1) se calculan por arquitectura. Un candidato entra si la media de sensibilidad en melanoma es ≥ 0,80 y la media de la sensibilidad mínima por clase es ≥ 0,50. Entre quienes entran, gana el mayor macro-F1. Si la diferencia de esa métrica con la líder es menor que la mayor de las dos desviaciones estándar entre semillas, se considera ruido y desempata el balanced accuracy. Si nadie entra, la misma regla se aplica sobre la sensibilidad en melanoma. La semilla representativa de cada red es la de macro-F1 más cercano a la media de sus tres semillas; esa versión recibe el alias `final`, y la de la ganadora también `seleccionado`. El resultado queda en un run `m2-seleccion`, con artefactos `seleccion.json` y `seleccion.md`.
+
+**Razón.** Es la regla de `docs/01_objetivos.md`, escrita una sola vez para que la memoria y el registro de modelos salgan del mismo cálculo. Hacerlo a mano con los tres decimales de la consola redondea el desempate. No se repite: si `m2-seleccion` ya está en `final`, `lanzar_seleccion` se niega a crear otro.
+
+**Resultado (7 nov 2026, run `cb7d4966bb7e4d58974c02420ed631d7`).** Ninguna arquitectura cumple los dos requisitos. Gana **DenseNet121** por sensibilidad en melanoma (0,120 ± 0,034), por delante de ResNet50 (0,082 ± 0,037) y EfficientNetB0 (0,016 ± 0,013). No hizo falta desempate. En ResNet50 la sensibilidad mínima por clase coincide con la de melanoma: es su peor clase. En DenseNet121 y EfficientNetB0 hay alguna clase todavía por debajo (mínima 0,115 y 0,006). Semillas representativas, alias `final`: ResNet50 semilla 2024, DenseNet121 semilla 42, EfficientNetB0 semilla 2024. DenseNet121 lleva además `seleccionado`. Las tres quedaron registradas como versión 1. Para la memoria hay que explicar por qué nadie llega al 80 % de sensibilidad en melanoma; el protocolo no se rehace.
