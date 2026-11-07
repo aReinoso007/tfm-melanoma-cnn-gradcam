@@ -36,6 +36,7 @@ tfm-melanoma-cnn-gradcam/
 │   ├── augmentation.py      # Módulo 1: aumento selectivo (solo train)
 │   ├── models.py            # Módulo 2: build_model(), congelar_base(), descongelar_fraccion()
 │   ├── metrics.py           # Módulo 2: calcular_metricas(), matriz_confusion(), tabla_predicciones()
+│   ├── selection.py         # Módulo 2: regla de selección y alias del registro de modelos
 │   ├── training.py          # Módulo 2: lanzar_run() (entrenamiento en dos fases, reanudable, registro en MLflow)
 │   ├── tfm_common.py        # heredado; sus secciones de datos (2-3) y de modelos y métricas (4-5) están obsoletas
 │   └── tracking.py          # utilidades comunes: MLflow, semillas, hashes, tags
