@@ -38,18 +38,18 @@ Entrenar las tres arquitecturas bajo condiciones idénticas, seleccionar el mejo
 - [x] Repetir para 3 arquitecturas × 3 semillas = **9 runs** (7 nov, experimento `m2-entrenamiento`). Marcados `estado=final`.
 
 ### 5. Selección (en validación, con la media de las 3 semillas)
-- [ ] Tabla resumen: media ± desviación estándar por arquitectura de `val_macro_f1`, `val_mel_sensitivity`, `val_mel_precision`, `val_min_class_sensitivity` y `val_balanced_accuracy`.
-- [ ] Aplicar la regla:
+- [x] Tabla resumen: media ± desviación estándar por arquitectura de `val_macro_f1`, `val_mel_sensitivity`, `val_mel_precision`, `val_min_class_sensitivity` y `val_balanced_accuracy`. Run `m2-seleccion` (`cb7d4966bb7e4d58974c02420ed631d7`), 7 nov.
+- [x] Aplicar la regla. Ninguna arquitectura cumple los dos requisitos. Gana DenseNet121 por mayor sensibilidad en melanoma (0,120 ± 0,034).
   1. ¿`val_mel_sensitivity` ≥ 0.80?
   2. ¿`val_min_class_sensitivity` ≥ 0.50?
   3. Entre las que cumplen ambas → mayor `val_macro_f1`.
   4. Si la diferencia de F1 macro < desviación estándar entre semillas → mayor `val_balanced_accuracy`.
   5. Si ninguna cumple → mayor `val_mel_sensitivity` y se analizan las causas en la discusión.
-- [ ] Guardar la tabla y la decisión como artefacto (`seleccion.json` + `seleccion.md`).
-- [ ] Registrar en el Model Registry la semilla representativa de cada arquitectura con alias `final`, y la ganadora además con alias `seleccionado`.
+- [x] Guardar la tabla y la decisión como artefacto (`seleccion.json` + `seleccion.md`) del run `m2-seleccion`.
+- [x] Registrar en el Model Registry la semilla representativa de cada arquitectura con alias `final` (ResNet50 semilla 2024, DenseNet121 semilla 42, EfficientNetB0 semilla 2024), y la ganadora además con alias `seleccionado` (DenseNet121, versión 1).
 
 ### 6. Evaluación final en prueba (UNA sola vez)
-- [ ] **No ejecutar hasta haber cerrado la selección.** Si después se cambia algo del entrenamiento, se documenta como desviación.
+- [x] La selección quedó cerrada el 7 nov (DenseNet121). La evaluación en prueba ya se puede lanzar. Si después se cambia algo del entrenamiento, se documenta como desviación.
 - [ ] Un run por arquitectura en `m2-evaluacion-test` (cargando `models:/ham10000-<arch>@final`).
 - [ ] Métricas `test_*`, matriz de confusión normalizada y `predicciones_test.csv`. **Este CSV es la entrada del M3.**
 - [ ] Comprobar si el modelo seleccionado mantiene sensibilidad en melanoma ≥ 80% en prueba.
