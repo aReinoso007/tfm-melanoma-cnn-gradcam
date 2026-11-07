@@ -353,21 +353,35 @@ Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la
 2. ~~PR #8, aprobado y fusionado el 7 nov.~~
 3. Opcional: la prueba de reanudación en Colab (§6.3 de la guía). No bloquea los runs reales.
 
-## Runs reales — semilla 42 (Alex, 7 nov 2026)
+## Runs reales — las 9 ejecuciones (7 nov 2026)
 
-Experimento `m2-entrenamiento` (lo creó el primer run). Modo `real`, `main`, `deterministic=True`. Las otras dos semillas todavía no están. **Estos números no eligen modelo.**
+Experimento `m2-entrenamiento`. Modo `real`, `main`, `deterministic=True`. Semilla 42 Alex, 123 Adrián, 2024 Christian. El `val_macro_f1` y la sensibilidad son los de la línea `[+]`: el modelo guardado, que es el mejor de la fase 2. La selección oficial todavía no está hecha: faltan en esta tabla `val_mel_precision`, `val_min_class_sensitivity` y `val_balanced_accuracy`, que están en cada run.
 
 | Run | run_id | Tiempo | Épocas f1 / f2 | Mejor `val_loss` f1 (época de la fase) | Mejor `val_loss` f2 | `val_macro_f1` del modelo guardado | `val_mel_sensitivity` |
 |---|---|---|---|---|---|---|---|
 | `m2-resnet50-s42` | `b07eb7d9e4dc4526a31f9b7868255c16` | 14,2 min | 6 / 6 | 0,825 (1) | 1,102 (1) | 0,412 | 0,042 |
 | `m2-densenet121-s42` | `3031ddc150fd485b89a34b1be65d06f2` | 17,2 min | 10 / 6 | 0,804 (5) | 0,931 (1) | 0,446 | 0,084 |
 | `m2-efficientnetb0-s42` | `41ab358735a348f8b89617fe31f75c77` | 9,7 min | 9 / 6 | 0,842 (4) | 1,050 (1) | 0,358 | 0,006 |
+| `m2-resnet50-s123` | `52713b074e9d426c85978644990825c0` | 13,4 min | 6 / 6 | 0,803 (1) | 0,951 (1) | 0,476 | 0,090 |
+| `m2-densenet121-s123` | `c3db3c3ba1c745e18fef8ebe489a4daa` | 16,0 min | 9 / 6 | 0,819 (4) | 0,933 (1) | 0,431 | 0,127 |
+| `m2-efficientnetb0-s123` | `dfe71994b6bc4a3a8fa07a589631b966` | 7,5 min | 6 / 6 | 0,854 (1) | 0,895 (1) | 0,337 | 0,030 |
+| `m2-resnet50-s2024` | `03b89fa431db439188600861def72f31` | 14,2 min | 6 / 6 | 0,813 (1) | 0,933 (1) | 0,462 | 0,114 |
+| `m2-densenet121-s2024` | `c6de3f9f46e04f8e973958881f7ffda0` | 15,5 min | 10 / 6 | 0,849 (5) | 0,938 (1) | 0,449 | 0,151 |
+| `m2-efficientnetb0-s2024` | `84fab734e2a841a78460ab45d486e5d1` | 7,6 min | 8 / 6 | 0,810 (3) | 1,010 (1) | 0,348 | 0,012 |
 
-Las épocas salen del log: la fase para cuando `val_loss` no mejora en 5 épocas (D13). El `val_macro_f1` de la tabla es el de la línea `[+]`, o sea el del modelo restaurado, que es el mejor de la **fase 2**, no el mejor de todo el entrenamiento.
+Las épocas salen del log: la fase para cuando `val_loss` no mejora en 5 épocas (D13).
 
-**Lectura, todavía con una sola semilla.**
+Media ± desviación estándar (n−1) del modelo guardado, con los tres decimales de la línea `[+]`:
 
-- La parada anticipada funcionó. Las tres cuentas de tiempo suman 41 min, por debajo de los 83 min de peor caso de D10, porque ninguna fase agotó sus 15 o 30 épocas.
-- En las tres redes, el mejor punto de la fase 2 es su primera época, y ese `val_loss` es peor que el mejor de la fase 1. Al descongelar, la pérdida de entrenamiento sigue bajando y la de validación sube: la fase 2 no se recupera dentro de la paciencia. El modelo que queda guardado es ese, porque D13 fija como modelo final el mejor de la fase 2. No se cambia el protocolo a mitad de los nueve runs; las otras semillas tienen que usar la misma regla. `f1_mejor_val_loss` y `f2_mejor_val_loss` quedan en el run para poder contarlo en la memoria.
-- La sensibilidad en melanoma de esta semilla queda muy por debajo del 0,80 de la regla de selección. Con una semilla no se concluye nada: la regla se aplica a la media de las tres.
-- La sección 4 del notebook, el mismo 7 nov, recargó los tres modelos con `load_model("runs:/<id>/modelo")`: salida `(None, 7)` y las mismas probabilidades del entrenamiento (`True` en ResNet50, DenseNet121 y EfficientNetB0). Aquí el artefacto ya estaba en el run, así que no hubo que reconstruirlo desde Drive.
+| Arquitectura | `val_macro_f1` | `val_mel_sensitivity` |
+|---|---|---|
+| ResNet50 | 0,450 ± 0,034 | 0,082 ± 0,037 |
+| DenseNet121 | 0,442 ± 0,010 | 0,121 ± 0,034 |
+| EfficientNetB0 | 0,348 ± 0,011 | 0,016 ± 0,012 |
+
+**Lectura.**
+
+- La parada anticipada funcionó en los nueve. Ninguna fase agotó sus 15 o 30 épocas. Cada cuenta tardó entre 37 y 41 min, por debajo de los 83 min de peor caso de D10.
+- En los nueve runs, el mejor `val_loss` de la fase 2 es el de su primera época, y es peor que el mejor de la fase 1. Al descongelar, la pérdida de entrenamiento baja y la de validación sube, y no se recupera dentro de la paciencia. El modelo guardado es ese por D13. El protocolo no se reescribe a posteriori: los nueve ya se entrenaron con la misma regla. `f1_mejor_val_loss` y `f2_mejor_val_loss` quedan en cada run para la memoria.
+- Ninguna semilla llega a sensibilidad en melanoma de 0,80. La primera condición de la regla de selección falla en las tres arquitecturas, así que la regla cae en su último paso (la mayor sensibilidad en melanoma) salvo que al leer el resto de métricas del run aparezca otra cosa. Con estas cifras redondeadas, esa sensibilidad media es 0,121 en DenseNet121, 0,082 en ResNet50 y 0,016 en EfficientNetB0. La decisión se cierra al escribir `seleccion.json` con las métricas completas de MLflow, no con esta tabla.
+- La recarga del modelo quedó comprobada en la semilla 42. En las semillas 123 y 2024 el modelo se guardó (aparece el aviso de MLflow al subirlo); la celda que lo vuelve a cargar no está en la salida pegada.
