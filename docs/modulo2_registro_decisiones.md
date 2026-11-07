@@ -27,6 +27,7 @@ El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian co
 | D15 | Reanudación tras desconexión de Colab: `BackupAndRestore` + estado en JSON en Drive + marca `<fase>_completa.json` | Acordada la idea (checkpoints en Drive); el diseño, implementación | Sí |
 | D16 | `lanzar_run(modo="sandbox"\|"real")`: en `real` no admite `epochs`/`max_lotes`, exige árbol limpio y confirmación explícita | Interruptor acordado en D11; las guardas, implementación | Sí |
 | D17 | El modelo se sube con `save_model` + `log_artifacts` (`modelo/`), no con `log_model` de MLflow 3 | Implementación (DagsHub no sirve el Logged Model) | Sí. Comprobado en DagsHub el 7 nov: las tres redes se recargan y dan las mismas probabilidades |
+| D19 | v2: el mismo aumento para las siete clases; experimento `m2-entrenamiento-v2` | Grupo, 7 nov 2026, tras la comprobación del atajo | Sí. Los runs y alias de la v1 se conservan |
 
 ## Conclusiones del paso 1 (4 nov 2026)
 
@@ -392,4 +393,24 @@ Media ± desviación estándar (n−1) del modelo guardado, con los tres decimal
 
 **Razón.** Es la regla de `docs/01_objetivos.md`, escrita una sola vez para que la memoria y el registro de modelos salgan del mismo cálculo. Hacerlo a mano con los tres decimales de la consola redondea el desempate. No se repite: si `m2-seleccion` ya está en `final`, `lanzar_seleccion` se niega a crear otro.
 
-**Resultado (7 nov 2026, run `cb7d4966bb7e4d58974c02420ed631d7`).** Ninguna arquitectura cumple los dos requisitos. Gana **DenseNet121** por sensibilidad en melanoma (0,120 ± 0,034), por delante de ResNet50 (0,082 ± 0,037) y EfficientNetB0 (0,016 ± 0,013). No hizo falta desempate. En ResNet50 la sensibilidad mínima por clase coincide con la de melanoma: es su peor clase. En DenseNet121 y EfficientNetB0 hay alguna clase todavía por debajo (mínima 0,115 y 0,006). Semillas representativas, alias `final`: ResNet50 semilla 2024, DenseNet121 semilla 42, EfficientNetB0 semilla 2024. DenseNet121 lleva además `seleccionado`. Las tres quedaron registradas como versión 1. Para la memoria hay que explicar por qué nadie llega al 80 % de sensibilidad en melanoma; el protocolo no se rehace.
+**Resultado (7 nov 2026, run `cb7d4966bb7e4d58974c02420ed631d7`).** Ninguna arquitectura cumple los dos requisitos. Gana **DenseNet121** por sensibilidad en melanoma (0,120 ± 0,034), por delante de ResNet50 (0,082 ± 0,037) y EfficientNetB0 (0,016 ± 0,013). No hizo falta desempate. En ResNet50 la sensibilidad mínima por clase coincide con la de melanoma: es su peor clase. En DenseNet121 y EfficientNetB0 hay alguna clase todavía por debajo (mínima 0,115 y 0,006). Semillas representativas, alias `final`: ResNet50 semilla 2024, DenseNet121 semilla 42, EfficientNetB0 semilla 2024. DenseNet121 lleva además `seleccionado`. Las tres quedaron registradas como versión 1. Para la memoria hay que explicar por qué nadie llega al 80 % de sensibilidad en melanoma. Esos runs y esos alias se conservan. El segundo experimento, con el aumento igualado, es D19.
+
+### D19. Aumento uniforme y experimento `m2-entrenamiento-v2`
+
+**Causa.** En la v1 el aumento dependía de la clase: nv solo recibía volteos horizontal y vertical; las otras seis recibían además rotación ±90° con relleno por reflejo, acercamiento del 90–100 % y brillo y contraste de ×0,9 a ×1,1. Como nv es el 67 % del train, la red podía usar «esta imagen no está rotada ni cambiada de brillo» como pista de nv, sin mirar la lesión.
+
+**Evidencia (7 nov 2026, validación, etiquetas sin cambiar).** Sobre los tres modelos guardados de las semillas representativas, forzar el aumento completo en todas las imágenes (media de las semillas 11, 22 y 33) baja la fracción predicha nv y sube la sensibilidad en melanoma. Los volteos solos no mueven la fracción. El conjunto de prueba no se abrió.
+
+| Modelo guardado | Fracción predicha nv, limpia | Con aumento forzado | Sensibilidad en melanoma, limpia | Con aumento forzado |
+|---|---|---|---|---|
+| ResNet50, semilla 2024 (`03b89fa431db439188600861def72f31`) | 0,842 | 0,361 | 0,114 | 0,604 |
+| DenseNet121, semilla 42 (`3031ddc150fd485b89a34b1be65d06f2`) | 0,841 | 0,390 | 0,084 | 0,576 |
+| EfficientNetB0, semilla 2024 (`84fab734e2a841a78460ab45d486e5d1`) | 0,909 | 0,334 | 0,012 | 0,556 |
+
+La diferencia de fracción nv es 0,45–0,58. El ruido entre las tres semillas de aumento es del orden de 0,03, y los volteos solos cambian la fracción en menos de 0,01. La fase 1 de ResNet50 s2024 y de DenseNet121 s42 ya tenía el mismo hueco, así que no es un efecto de la parada de la fase 2. Con el aumento a favor, la sensibilidad en melanoma se queda en 0,56–0,60: igualar el aumento es el experimento que toca, y no promete el umbral clínico de 0,80.
+
+**Cambio.** Un solo cambio de protocolo. `augmentar` aplica `_fuerte` a las siete clases; `etiqueta` sigue en la firma porque el pipeline la pasa y no cambia la transformación. `configs/base.yaml` pasa a `config_version: 2` y `data.augmentation.politica: uniforme`. Se mantienen `split_v1`, `class_weights.json` (raíz cuadrada), la cabeza, las dos fases, las tasas, el 30 % de capas, la BatchNormalization congelada, la parada por `val_loss` sin pesos con paciencia 5, el modo determinista, el lote de 32 y 224 × 224.
+
+Los runs nuevos van a `m2-entrenamiento-v2`, con el mismo nombre `m2-<arch>-s<semilla>`, tags `aumento=uniforme`, huella SHA-256 de `augmentation.py` y de `base.yaml`, `gpu` y `tf_version`. `estado=final` se pone al terminar sin errores. Los checkpoints van a `checkpoints-v2/`, incluido `f1_mejor.weights.h5`. Cada época registra `f1_val_sens_mel` y `f2_val_sens_mel`. Al cerrar el run se registran `val_frac_nv_limpio`, `val_frac_nv_aumentado`, `val_sens_mel_limpio`, `val_sens_mel_aumentado` y `val_delta_frac_nv`.
+
+**Alarma.** `alarma_delta_frac_nv: 0,20`. Salta si la fracción predicha nv sin aumento menos la media con aumento forzado supera 0,20. Ese corte está por debajo de la mitad del hueco más pequeño de la v1 (0,45) y muy por encima del ruido de las semillas de aumento (≈ 0,03). Si salta, el run sigue en `estado=final` y el tag `alarma_atajo=true`; el piloto no pasa y no se lanzan los otros ocho. `m2-entrenamiento`, `m2-seleccion` y los alias `final` y `seleccionado` de la v1 no se tocan. `m2-seleccion-v2` y la comparación v1 contra v2 esperan a los nueve runs. El conjunto de prueba sigue cerrado.
