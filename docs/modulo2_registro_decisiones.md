@@ -6,25 +6,33 @@ Estado de las tareas: ver las casillas de [modulo2_entrenamiento_evaluacion.md](
 
 ## Resumen de decisiones del paso 1
 
+El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian confirmó D8 y el grupo ratificó D5 y D10 en la revisión). Las notas para redactar la memoria están en [modulo2_notas_memoria.md](modulo2_notas_memoria.md).
+
 | # | Decisión | Origen | ¿Revisar en el PR? |
 |---|---|---|---|
 | D1 | Rama `m2/<tarea>` (esta: `m2/modelos-metricas`) | Acordada | No |
 | D2 | Lógica en `src/`, notebooks solo la importan | Acordada | No |
-| D3 | Misma cabeza en las 3 redes; capas del backbone aplanadas; prefijo `head_`; el modelo no normaliza | Estructura acordada; capas aplanadas, implementación | Sí (nombres de capa que usará M3) |
+| D3 | Misma cabeza en las 3 redes; capas del backbone aplanadas; prefijo `head_`; el modelo no normaliza | Estructura acordada; capas aplanadas, implementación | Revisada y aprobada en el PR #7 |
 | D4 | Fase 1: base congelada, solo cabeza | Acordada | No |
-| D5 | Fase 2: 30 % final de las capas, BatchNormalization siempre congelada | Fracción y BN acordadas; conteo por capas, implementación | **Sí: 30 % de capas ≠ 30 % de parámetros (73 % / 41 % / 76 %)** |
+| D5 | Fase 2: 30 % final de las capas, BatchNormalization siempre congelada | Fracción y BN acordadas; conteo por capas, implementación | **Ratificada (4 nov): se mantiene y se declara como limitación en la memoria** (73 % / 41 % / 76 % de parámetros; ver `modulo2_notas_memoria.md` §1.1) |
 | D6 | Los helpers de congelado no compilan | Implementación | No |
 | D7 | Métricas con los nombres de la convención; definiciones estándar | Nombres acordados | No |
-| D8 | `predicciones_*.csv` con `y_true`/`y_pred` como nombre de clase | Columnas acordadas; nombres, implementación | **Sí: confirmar con M3** |
+| D8 | `predicciones_*.csv` con `y_true`/`y_pred` como nombre de clase | Columnas acordadas; nombres, implementación | **Confirmada por Christian (M3), 4 nov** |
 | D9 | Pruebas con `pytest` (22) | Implementación | No |
-| D10 | `deterministic=True` en los 9 runs (`training.deterministic` en `base.yaml`) | Medición propia | **Sí: cambia `base.yaml`, necesita aprobación de los tres** |
+| D10 | `deterministic=True` en los 9 runs (`training.deterministic` en `base.yaml`) | Medición propia | **Ratificada (4 nov) y confirmada en `sandbox` (7 nov): peor caso 83 min por cuenta, bajo las ≈ 2 h** |
 | D11 | `sandbox` para pruebas; `m2-entrenamiento` y `m2-evaluacion-test` para lo oficial; `estado` a mano | Acordada (convenciones) | No |
+| D12 | Las dos fases van en el mismo run, con `step` = época acumulada (fase 2 continúa tras la 1) | Estructura acordada (`f1_*`, `f2_*`); `step` acumulado, implementación | Sí (PR del paso 2) |
+| D13 | Parada anticipada y mejores pesos por fase con un callback propio persistente (`ControlFase`), no `EarlyStopping` de Keras; monitor `val_loss`; el modelo final es el mejor de la fase 2 | Monitor y paciencia acordados; el callback propio, implementación | Sí |
+| D14 | Una sola pasada de validación por época: `val_loss` sin pesos de clase y `val_macro_f1`, para parada y para el log | Implementación | Sí |
+| D15 | Reanudación tras desconexión de Colab: `BackupAndRestore` + estado en JSON en Drive + marca `<fase>_completa.json` | Acordada la idea (checkpoints en Drive); el diseño, implementación | Sí |
+| D16 | `lanzar_run(modo="sandbox"\|"real")`: en `real` no admite `epochs`/`max_lotes`, exige árbol limpio y confirmación explícita | Interruptor acordado en D11; las guardas, implementación | Sí |
+| D17 | El modelo se sube con `save_model` + `log_artifacts` (`modelo/`), no con `log_model` de MLflow 3 | Implementación (DagsHub no sirve el Logged Model) | Sí |
 
 ## Conclusiones del paso 1 (4 nov 2026)
 
 1. **El código del M1 es consistente** entre repo, Drive y MLflow (hashes del split y del dataset, pesos, pipeline). M2 puede construir sobre él sin cambios.
 2. **`src/models.py` y `src/metrics.py` funcionan** en el portátil (Python 3.12) y en Colab (Python 3.13, T4): 22 pruebas en verde, parámetros entrenables idénticos en ambos entornos, formato de `predicciones_*.csv` validado con datos reales y run de prueba creado en `sandbox`.
-3. **El determinismo es viable en las tres redes**: ninguna lanza error con `deterministic=True` y las tres se repiten exactamente; sin él, DenseNet121 y EfficientNetB0 no se repiten ni entre dos pasadas idénticas. Cuesta 1,37× a 1,90× por paso (≈ 26 min más por cuenta en el peor caso). Se adopta `True`, pendiente de confirmar el coste con el pipeline completo en `sandbox`.
+3. **El determinismo es viable en las tres redes**: ninguna lanza error con `deterministic=True` y las tres se repiten exactamente; sin él, DenseNet121 y EfficientNetB0 no se repiten ni entre dos pasadas idénticas. Cuesta 1,37× a 1,90× por paso (≈ 26 min más por cuenta en el peor caso). Se adopta `True`. El 7 nov, con el pipeline completo en `sandbox`, la proyección quedó en 83 min por cuenta (ver D10).
 4. **Hallazgo metodológico para la memoria:** "30 % de las capas" descongela un porcentaje muy distinto de parámetros según la red (D5). Hay que mencionarlo como limitación del protocolo "mismos hiperparámetros base".
 5. **Qué no se ha hecho:** ningún entrenamiento real. Los números de las métricas vistas hasta ahora (por ejemplo `val_macro_f1` = 0,178) son de modelos sin entrenar y no son resultados.
 
@@ -106,7 +114,7 @@ Rama: `m2/modelos-metricas` (antes `modulo-2`).
 | DenseNet121 | 426 | 128 | `conv4_block23_1_relu` | 2 862 087 | 40,6 % |
 | EfficientNetB0 | 237 | 71 | `block6a_dwconv` | 3 063 587 | 75,5 % |
 
-**Punto abierto para el grupo.** "30 % de las capas" no equivale a "30 % de los parámetros": en DenseNet121 se entrena el 41 % de los pesos y en ResNet50 y EfficientNetB0 más del 70 %, porque las últimas capas de estas redes concentran más parámetros. La regla es idéntica para las tres, así que cumple "mismos hiperparámetros base", pero es una limitación que hay que **mencionar en la memoria**. Si se prefiere igualar la cantidad de parámetros entrenables, habría que cambiar la regla de `base.yaml` y eso exige PR aprobado por los tres. No se cambia sin acuerdo.
+**Ratificado por el grupo (4 nov 2026): se mantiene la regla y se menciona como limitación en la memoria** (texto preparado en `modulo2_notas_memoria.md` §1.1). Contexto original: "30 % de las capas" no equivale a "30 % de los parámetros": en DenseNet121 se entrena el 41 % de los pesos y en ResNet50 y EfficientNetB0 más del 70 %, porque las últimas capas de estas redes concentran más parámetros. La regla es idéntica para las tres, así que cumple "mismos hiperparámetros base", pero es una limitación que hay que **mencionar en la memoria**. Si se prefiere igualar la cantidad de parámetros entrenables, habría que cambiar la regla de `base.yaml` y eso exige PR aprobado por los tres. No se cambia sin acuerdo.
 **Origen.** Fracción y BN congelada: acordadas (`base.yaml`). Conteo por capas: decisión de implementación.
 
 ### D6. Los helpers no compilan el modelo
@@ -135,7 +143,7 @@ Rama: `m2/modelos-metricas` (antes `modulo-2`).
 **Razón.**
 - El contrato M2→M3 fija las columnas pero no si las clases son índices o nombres. Con nombres el CSV se entiende solo y no depende de recordar el orden de `CLASES`; M3 filtra falsos negativos con `y_true == "mel"`.
 - Las probabilidades solo se pueden emparejar con las imágenes si están en el orden de `split_df()`. Un desorden no da error, simplemente asigna probabilidades a la imagen equivocada. Por eso la función comprueba longitud y que el split venga ordenado por `image_id`.
-**Pendiente.** Confirmar con Christian (M3) que nombres le sirven; si prefiere índices es un cambio de una línea.
+**Confirmado por Christian (M3) el 4 nov 2026:** los nombres de clase le sirven.
 **Origen.** Columnas acordadas; nombres frente a índices: decisión de implementación.
 
 ### D9. Pruebas automáticas
@@ -175,7 +183,7 @@ Lectura:
 - Sin determinismo, DenseNet121 y EfficientNetB0 ya difieren entre dos pasadas idénticas, aunque a un nivel de redondeo (≈10⁻⁷ en la pérdida tras 20 pasos). Aquí no se midió cuánto se amplifica esa diferencia a lo largo de un entrenamiento completo.
 - Las tres penalizaciones superan el umbral de 1,3× fijado antes de medir, así que **por la regla no hay decisión automática: la toma el grupo**.
 
-**Decisión adoptada (4 nov 2026): `deterministic=True` en las tres redes, de forma provisional**, sujeta a la ratificación del grupo en el PR y a la comprobación del coste real en `sandbox`. Queda reflejada en `configs/base.yaml` (`training.deterministic: true`).
+**Decisión adoptada y ratificada por el grupo (4 nov 2026): `deterministic=True` en las tres redes**, sujeta a que el coste real en `sandbox` no superara ≈ 2 h por cuenta. Esa condición se cumplió el 7 nov (83 min; ver la confirmación más abajo). Queda reflejada en `configs/base.yaml` (`training.deterministic: true`).
 
 **Razonamiento.** El umbral de 1,3× era una aproximación a "el coste es asumible"; el coste absoluto, calculado con estos tiempos, es pequeño:
 
@@ -189,10 +197,23 @@ Lectura:
 Son ≈ 26 min más por cuenta en el peor caso. Es un orden de magnitud, no una promesa: el cálculo usa el tiempo medio de las dos fases juntas (la fase 1 es más ligera) y **no incluye** la lectura de datos ni la predicción en validación de cada época. Con determinismo, `tf.data` además fija el orden de sus operaciones paralelas, lo que podría frenar la entrada de datos y no está medido aquí.
 - *A favor de `True`:* resultado exactamente repetible en el mismo hardware, lo que respalda OE7 y permite que otro integrante o el director reproduzca un número de la memoria; sin errores en ninguna red.
 - *En contra:* +26 min de GPU por cuenta, y la repetibilidad exacta solo vale con la misma GPU y versiones (los runs se reparten entre tres cuentas).
-- **Condición para confirmarlo:** en la prueba de `sandbox` (paso siguiente) se mide el tiempo real por época con el pipeline completo. Si la proyección a 45 épocas supera ≈ 2 h por cuenta, se vuelve a plantear al grupo.
-- Cualquiera que sea el modo, se registra en cada run como `deterministic` (junto con GPU y versión de TensorFlow). Si se confirma, se añadirá a `configs/base.yaml` (`training.deterministic: true`), cambio que necesita el PR aprobado por los tres.
+- **Condición para confirmarlo:** en la prueba de `sandbox` se mide el tiempo real por época con el pipeline completo. Si la proyección a 45 épocas supera ≈ 2 h por cuenta, se vuelve a plantear al grupo.
+- Cualquiera que sea el modo, se registra en cada run como `deterministic` (junto con GPU y versión de TensorFlow). Quedó en `configs/base.yaml` (`training.deterministic: true`) en el PR #7.
 
-**Origen.** Medición propia; el modo definitivo lo ratifica el grupo en el PR. Cada run registra `deterministic`, `gpu` y `tf_version` (`docs/03_mlflow_convenciones.md` §4).
+**Confirmación (7 nov 2026, `m2_01_entrenamiento.ipynb`, T4, datos completos, 2+2 épocas, semilla 42).** Las tres redes terminaron sin error con `deterministic=True`. La proyección usa el tiempo por paso de la última época de cada fase (220 pasos, 15+30 épocas, sin parada anticipada) y no incluye la validación:
+
+| Arquitectura | ms/paso fase 1 | ms/paso fase 2 | Peor caso |
+|---|---|---|---|
+| ResNet50 | 136 | 199 | 29,3 min |
+| DenseNet121 | 335 | 180 | 38,2 min |
+| EfficientNetB0 | 79 | 103 | 15,6 min |
+| Total por cuenta (3 redes, 1 semilla) | | | **83,1 min** |
+
+La validación (1 502 imágenes, solo hacia delante) no entra en `s_por_paso`. Añadirle un 10 % deja el total en torno a 90 min, por debajo de las ≈ 2 h. **La condición se cumple y se mantiene `deterministic=True`.** El cálculo previo del banco, sin lectura de datos, daba ≈ 74 min: el pipeline completo no cambia el orden de magnitud.
+
+En DenseNet121 la última época de la fase 1 salió más lenta que la de la fase 2 (335 frente a 180 ms/paso). Lo esperable es lo contrario, porque la fase 2 entrena más capas. Con solo dos épocas, esa última de la fase 1 puede seguir incluyendo el calentamiento de `tf.data`, así que 83 min es un techo. Los `val_macro_f1` de estos runs (0,426, 0,428 y 0,313) son de cuatro épocas y no se citan. Runs en `sandbox`: `51776efe5975433eb0f473a30c7b8989`, `9e97c522ffc949e5b3d94ae32275a10d`, `ad3fdffd95e04be4a6484f1019a77e35`. La carga del modelo en esa misma sesión falló: ver D17.
+
+**Origen.** Medición propia; ratificada por el grupo el 4 nov 2026. Cada run registra `deterministic`, `gpu` y `tf_version` (`docs/03_mlflow_convenciones.md` §4).
 
 ### D11. Dónde se registra cada run en MLflow
 
@@ -236,7 +257,96 @@ Las pérdidas del bloque 4 salen de 3 lotes de validación sin entrenar de verda
 
 ### Qué NO se hizo todavía (siguientes pasos)
 
-0. Que el grupo apruebe el PR de `m2/modelos-metricas`, con atención a D5, D8 y D10.
+0. ~~Aprobación del PR #7~~ (hecho el 4 nov 2026: D5, D8 y D10 ratificadas).
 1. Callback y bucle de entrenamiento de las dos fases (`f1_*`, `f2_*` en el mismo run, checkpoints en Drive, `BackupAndRestore`, interruptor `MODO`, registro de `deterministic`, `gpu` y `tf_version`).
-2. Prueba en `sandbox` con subconjunto pequeño y 2 épocas, en Colab con GPU: confirma además el tiempo real por época con `deterministic=True` (D10).
+2. ~~Prueba en `sandbox` en Colab~~ (hecha el 7 nov 2026: las tres redes, 2+2 épocas, datos completos; D10 confirmada, 83 min por cuenta).
 3. Los 9 runs, la selección, la evaluación en prueba y el registro de modelos.
+
+---
+
+## Paso 2 — `src/training.py`, `tests/test_training.py` y `notebooks/m2_01_entrenamiento.ipynb`
+
+Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la reanudación tras desconexión, el registro en MLflow y el notebook que lo lanza en modo `sandbox` o `real`. La prueba de `sandbox` en Colab está hecha (7 nov); **todavía no hay ningún entrenamiento real**.
+
+### D12. Las dos fases en el mismo run, con `step` acumulado
+
+**Decisión.** Un solo run por (arquitectura, semilla) con métricas `f1_*` y `f2_*`. El `step` de MLflow es la **época acumulada**: si la fase 1 dura 15 épocas, la primera de la fase 2 se registra en el `step` 16.
+
+**Razón.**
+- Es lo que dicen las convenciones (`docs/03_mlflow_convenciones.md`): 9 runs oficiales, no 18.
+- Con el `step` acumulado las dos fases se dibujan en la misma gráfica sin que la fase 2 pise a la 1; la subida de la pérdida al descongelar (se ve incluso en la prueba local: 2,02 → 2,46 con 2 lotes) queda visible y se puede explicar en la memoria.
+
+### D13. `ControlFase` en vez de `EarlyStopping` de Keras
+
+**Decisión.** La parada anticipada y la restauración de los mejores pesos se implementan en un callback propio (`ControlFase`) que guarda su estado (mejor `val_loss`, mejor época, épocas sin mejora) en `<fase>_control.json` y los mejores pesos en `<fase>_mejor.weights.h5`. Monitor `val_loss`, paciencia 5 (`configs/base.yaml`). Al terminar la fase se restauran los mejores pesos. **El modelo final de cada run es el mejor de la fase 2**; el mejor `val_loss` de cada fase se registra (`f1_mejor_val_loss`, `f2_mejor_val_loss`) y la mejor época de cada fase también.
+
+**Razón.**
+- `EarlyStopping` guarda su contador y sus mejores pesos **en memoria**. Si Colab se desconecta y `BackupAndRestore` reanuda en la época 12, el `EarlyStopping` nuevo empieza de cero: contaría la paciencia desde ahí y `restore_best_weights` devolvería la mejor época *posterior al reinicio*, no la mejor de toda la fase. El resultado dependería de si hubo desconexión, y eso rompe la reproducibilidad (OE7).
+- Con el estado en disco, un run interrumpido y reanudado llega exactamente a la misma decisión que uno sin interrupción. Está probado en `tests/test_training.py` (simulando la desconexión).
+- El modelo final es el de la fase 2 porque es el que se evalúa y el que usa M3. Registrar también `f1_mejor_val_loss` permite ver si descongelar mejoró algo (comparación que irá en la memoria).
+
+### D14. Una sola pasada de validación por época
+
+**Decisión.** Un callback (`EvaluarValidacion`) recorre `val` una vez por época, calcula `val_loss` (entropía cruzada **sin pesos de clase**) y `val_macro_f1`, los inyecta en `logs` (así los ve `ControlFase`) y los registra en MLflow junto con `loss` de entrenamiento y `s_por_paso`.
+
+**Razón.**
+- Evita pasar dos veces por validación (una para Keras y otra para el F1), que son 1 502 imágenes por época.
+- `val_loss` sin pesos de clase: el `loss` de entrenamiento sí lleva pesos (`class_weight`), así que no es comparable con el de validación. La parada se hace con la pérdida sin pesos porque mide la calidad real de las probabilidades sobre la distribución real de las clases; el macro-F1 se registra para decidir (selección) pero no para parar, siguiendo la convención.
+- `s_por_paso` (tiempo por lote) se registra cada época: es lo que alimenta la proyección de coste de D10.
+
+### D15. Reanudación tras desconexión
+
+**Decisión.** Tres capas, todas en `checkpoints_dir` (Drive):
+1. `BackupAndRestore` de Keras por fase (`backup_<fase>/`): reanuda en la época interrumpida.
+2. Estado propio en JSON escritos de forma atómica (archivo temporal + `os.replace`, para que una desconexión a mitad de escritura no deje un JSON corrupto): `<fase>_historial.json` (métricas por época, sin duplicar épocas al reanudar), `<fase>_control.json` y `<fase>_mejor.weights.h5`.
+3. Marca `<fase>_completa.json`: si existe, la fase no se vuelve a entrenar y solo se recargan los mejores pesos. Así, una desconexión durante la fase 2 no repite la fase 1.
+
+**Razón.** Los runs largos (hasta ≈ 2 h por cuenta en el peor caso, D10) sobre Colab gratuito se van a interrumpir. Sin reanudación fiable, perder 1 h de GPU por una desconexión obligaría a repetir y comprometería el presupuesto de cuota. Probado con datos sintéticos 64×64 en `tests/test_training.py` (no duplica épocas, no repite fases completas).
+
+**Límite honesto.** `BackupAndRestore` restaura pesos y optimizador, pero no el estado del generador aleatorio del `shuffle`: un run reanudado a mitad es válido, pero **no es idéntico bit a bit** a uno ininterrumpido. Si un run se reanuda, hay que dejarlo anotado (el notebook lo muestra) y mencionarlo si afecta a un resultado oficial.
+
+### D16. `lanzar_run`: modos `sandbox` y `real`
+
+**Decisión.**
+
+| | `sandbox` | `real` |
+|---|---|---|
+| Experimento MLflow | `sandbox` | `m2-entrenamiento` |
+| Nombre del run | `m2-<arch>-s<seed>-sandbox` | `m2-<arch>-s<seed>` |
+| Estado en Drive | `checkpoints/sandbox/…` | `checkpoints/…` |
+| `epochs` / `max_lotes` | permitidos | **`ValueError`** |
+| `git_dirty=true` | permitido | **`RuntimeError`** |
+| Confirmación | no | el notebook exige `CONFIRMO_REAL = True` |
+
+**Razón.** Es el interruptor prometido en D11. Las guardas hacen imposible, por un descuido, que un run acortado o hecho con código sin commitear acabe en el experimento oficial. Los estados en carpetas distintas evitan que un ensayo `sandbox` "complete" una fase que luego el run real daría por entrenada. Con `max_lotes`, el dataset se recorre entero una vez antes de medir para que la caché de `tf.data` esté caliente y el `s_por_paso` sea el real y no el del primer pase (que incluye decodificar JPEG).
+
+### D17. El modelo va como artefacto del run, no como Logged Model
+
+**Decisión.** `publicar_modelo()` guarda el modelo con `mlflow.tensorflow.save_model` y lo sube con `MlflowClient.log_artifacts(..., artifact_path="modelo")`. Se carga con `mlflow.tensorflow.load_model("runs:/<id>/modelo")`, que es la ruta que el registro de modelos convierte luego en `models:/ham10000-<arch>@final`.
+
+**Razón.** En MLflow 3, `log_model(..., name="modelo")` no escribe en los artefactos del run: crea un *Logged Model* aparte. Con un servidor completo (SQLite local, 4 nov) `runs:/<id>/modelo` sí resuelve. DagsHub no: el 7 nov, con los tres runs de `sandbox` ya creados, la sección 4 del notebook falló con `Failed to download artifacts from path 'modelo'`. Los demás artefactos del mismo run (`curvas.png`, el CSV) sí estaban. El formato en disco es el mismo (`MLmodel` + pesos); cambia solo dónde se sube, y ese sitio es el que DagsHub ya sirve.
+
+**Cómo se recupera lo ya entrenado.** Los pesos de la fase 2 siguen en Drive (`f2_mejor.weights.h5`). La sección 4, si no encuentra `modelo/`, reconstruye la red, carga esos pesos y los publica en el run cerrado. No hace falta repetir las 2+2 épocas.
+
+### Verificación local del paso 2 (4 nov 2026)
+
+- `pytest tests -q`: 28 pruebas en verde (22 de modelos y métricas y 6 nuevas de entrenamiento), 56 s en el portátil.
+- **Ejecución de extremo a extremo en el portátil** (CPU, sin GPU, imágenes reales de `documentos-drive/`, EfficientNetB0 con ImageNet, 2 lotes por época, 1+1 épocas, MLflow local con SQLite): el run se crea con las etiquetas esperadas (`modulo=m2`, `fase=entrenamiento`, `modo=sandbox`, `arch`, `seed`), registra 61 métricas, los parámetros `deterministic=True`, `tf_version=2.21.0`, `gpu=sin GPU`, `n_capas_descongeladas=71`, y los 4 artefactos (`curvas.png`, `confusion_val_norm.png`, `classification_report_val.json`, `predicciones_val.csv`). Con el servidor SQLite local, `mlflow.tensorflow.log_model(..., name="modelo")` se vuelve a cargar con `mlflow.tensorflow.load_model("runs:/<id>/modelo")`: `Functional`, salida `(None, 7)`. Ese atajo no existe en DagsHub (D17): allí el modelo tiene que ir como artefacto del run.
+- Los tiempos de esa ejecución (≈ 2,5 y 3,3 s/paso) son de CPU y **no valen para nada** salvo para comprobar que el campo se registra; el coste real se mide en la GPU de Colab.
+- La celda de carga contra DagsHub falló el 7 nov (D17). El arreglo sube `modelo/` como artefacto del run.
+
+### Verificación en Colab del paso 2 (7 nov 2026, `m2_01_entrenamiento.ipynb`, `MODO = "sandbox"`)
+
+| Qué | Resultado |
+|---|---|
+| Tres redes, 2+2 épocas, datos completos, semilla 42, `deterministic=True` | Sin error. Tiempos de pared: ResNet50 6,3 min, DenseNet121 7,0 min, EfficientNetB0 4,4 min (incluyen el primer epoch en frío y la validación) |
+| Proyección de peor caso | 29,3 + 38,2 + 15,6 = **83,1 min por cuenta**. Condición de D10 cumplida |
+| Registro del modelo en DagsHub | `log_model` no dejó un artefacto cargable. Fallo y arreglo en D17 |
+
+**No hecho en esta sesión:** la prueba de reanudación de `modulo2_guia_colab.md` §6.3 (parar a mitad y volver a lanzar). La lógica está cubierta por `tests/test_training.py` con una desconexión simulada; en Colab queda por ver una sola vez, y no bloquea el PR.
+
+### Qué falta del paso 2
+
+1. ~~Prueba `sandbox` y proyección de D10~~ (hechas el 7 nov).
+2. Abrir el PR y obtener la aprobación de los tres (toca `src/`).
+3. Opcional antes de los runs reales: la prueba de reanudación en Colab (§6.3 de la guía).
