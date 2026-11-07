@@ -26,7 +26,7 @@ El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian co
 | D14 | Una sola pasada de validación por época: `val_loss` sin pesos de clase y `val_macro_f1`, para parada y para el log | Implementación | Sí |
 | D15 | Reanudación tras desconexión de Colab: `BackupAndRestore` + estado en JSON en Drive + marca `<fase>_completa.json` | Acordada la idea (checkpoints en Drive); el diseño, implementación | Sí |
 | D16 | `lanzar_run(modo="sandbox"\|"real")`: en `real` no admite `epochs`/`max_lotes`, exige árbol limpio y confirmación explícita | Interruptor acordado en D11; las guardas, implementación | Sí |
-| D17 | El modelo se sube con `save_model` + `log_artifacts` (`modelo/`), no con `log_model` de MLflow 3 | Implementación (DagsHub no sirve el Logged Model) | Sí |
+| D17 | El modelo se sube con `save_model` + `log_artifacts` (`modelo/`), no con `log_model` de MLflow 3 | Implementación (DagsHub no sirve el Logged Model) | Sí. Comprobado en DagsHub el 7 nov: las tres redes se recargan y dan las mismas probabilidades |
 
 ## Conclusiones del paso 1 (4 nov 2026)
 
@@ -328,12 +328,14 @@ Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la
 
 **Cómo se recupera lo ya entrenado.** Los pesos de la fase 2 siguen en Drive (`f2_mejor.weights.h5`). La sección 4, si no encuentra `modelo/`, reconstruye la red, carga esos pesos y los publica en el run cerrado. No hace falta repetir las 2+2 épocas.
 
+**Comprobado en DagsHub (7 nov 2026, misma sesión de Colab).** Tras publicar desde Drive, `load_model("runs:/<id>/modelo")` descargó 7 artefactos en las tres redes y `predict` coincidió con las probabilidades guardadas del entrenamiento (`atol=1e-4`): ResNet50, DenseNet121 y EfficientNetB0, las tres `True`, salida `(None, 7)`. El aviso de MLflow de que el modelo se guarda sin *signature* no afecta a esta carga: el M3 usa `mlflow.tensorflow.load_model`, no la inferencia por `pyfunc`. La primera tentativa de descarga, cuando `modelo/` aún no existía, espera unos 4 minutos antes de fallar; en un run nuevo el artefacto ya está y esa espera no se produce.
+
 ### Verificación local del paso 2 (4 nov 2026)
 
 - `pytest tests -q`: 28 pruebas en verde (22 de modelos y métricas y 6 nuevas de entrenamiento), 56 s en el portátil.
 - **Ejecución de extremo a extremo en el portátil** (CPU, sin GPU, imágenes reales de `documentos-drive/`, EfficientNetB0 con ImageNet, 2 lotes por época, 1+1 épocas, MLflow local con SQLite): el run se crea con las etiquetas esperadas (`modulo=m2`, `fase=entrenamiento`, `modo=sandbox`, `arch`, `seed`), registra 61 métricas, los parámetros `deterministic=True`, `tf_version=2.21.0`, `gpu=sin GPU`, `n_capas_descongeladas=71`, y los 4 artefactos (`curvas.png`, `confusion_val_norm.png`, `classification_report_val.json`, `predicciones_val.csv`). Con el servidor SQLite local, `mlflow.tensorflow.log_model(..., name="modelo")` se vuelve a cargar con `mlflow.tensorflow.load_model("runs:/<id>/modelo")`: `Functional`, salida `(None, 7)`. Ese atajo no existe en DagsHub (D17): allí el modelo tiene que ir como artefacto del run.
 - Los tiempos de esa ejecución (≈ 2,5 y 3,3 s/paso) son de CPU y **no valen para nada** salvo para comprobar que el campo se registra; el coste real se mide en la GPU de Colab.
-- La celda de carga contra DagsHub falló el 7 nov (D17). El arreglo sube `modelo/` como artefacto del run.
+- La celda de carga contra DagsHub falló el 7 nov por la mañana y, con `publicar_modelo`, quedó verificada esa misma tarde: las tres redes, `True` (D17).
 
 ### Verificación en Colab del paso 2 (7 nov 2026, `m2_01_entrenamiento.ipynb`, `MODO = "sandbox"`)
 
@@ -341,7 +343,7 @@ Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la
 |---|---|
 | Tres redes, 2+2 épocas, datos completos, semilla 42, `deterministic=True` | Sin error. Tiempos de pared: ResNet50 6,3 min, DenseNet121 7,0 min, EfficientNetB0 4,4 min (incluyen el primer epoch en frío y la validación) |
 | Proyección de peor caso | 29,3 + 38,2 + 15,6 = **83,1 min por cuenta**. Condición de D10 cumplida |
-| Registro del modelo en DagsHub | `log_model` no dejó un artefacto cargable. Fallo y arreglo en D17 |
+| Registro del modelo en DagsHub | `log_model` no dejó un artefacto cargable. Tras `publicar_modelo`, las tres redes se recargan y las probabilidades coinciden (D17) |
 
 **No hecho en esta sesión:** la prueba de reanudación de `modulo2_guia_colab.md` §6.3 (parar a mitad y volver a lanzar). La lógica está cubierta por `tests/test_training.py` con una desconexión simulada; en Colab queda por ver una sola vez, y no bloquea el PR.
 
