@@ -19,7 +19,7 @@ El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian co
 | D7 | Métricas con los nombres de la convención; definiciones estándar | Nombres acordados | No |
 | D8 | `predicciones_*.csv` con `y_true`/`y_pred` como nombre de clase | Columnas acordadas; nombres, implementación | **Confirmada por Christian (M3), 4 nov** |
 | D9 | Pruebas con `pytest` (22) | Implementación | No |
-| D10 | `deterministic=True` en los 9 runs (`training.deterministic` en `base.yaml`) | Medición propia | **Ratificada por el grupo (4 nov); el coste real por época se confirma en la prueba de `sandbox`** |
+| D10 | `deterministic=True` en los 9 runs (`training.deterministic` en `base.yaml`) | Medición propia | **Ratificada (4 nov) y confirmada en `sandbox` (7 nov): peor caso 83 min por cuenta, bajo las ≈ 2 h** |
 | D11 | `sandbox` para pruebas; `m2-entrenamiento` y `m2-evaluacion-test` para lo oficial; `estado` a mano | Acordada (convenciones) | No |
 | D12 | Las dos fases van en el mismo run, con `step` = época acumulada (fase 2 continúa tras la 1) | Estructura acordada (`f1_*`, `f2_*`); `step` acumulado, implementación | Sí (PR del paso 2) |
 | D13 | Parada anticipada y mejores pesos por fase con un callback propio persistente (`ControlFase`), no `EarlyStopping` de Keras; monitor `val_loss`; el modelo final es el mejor de la fase 2 | Monitor y paciencia acordados; el callback propio, implementación | Sí |
@@ -31,7 +31,7 @@ El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian co
 
 1. **El código del M1 es consistente** entre repo, Drive y MLflow (hashes del split y del dataset, pesos, pipeline). M2 puede construir sobre él sin cambios.
 2. **`src/models.py` y `src/metrics.py` funcionan** en el portátil (Python 3.12) y en Colab (Python 3.13, T4): 22 pruebas en verde, parámetros entrenables idénticos en ambos entornos, formato de `predicciones_*.csv` validado con datos reales y run de prueba creado en `sandbox`.
-3. **El determinismo es viable en las tres redes**: ninguna lanza error con `deterministic=True` y las tres se repiten exactamente; sin él, DenseNet121 y EfficientNetB0 no se repiten ni entre dos pasadas idénticas. Cuesta 1,37× a 1,90× por paso (≈ 26 min más por cuenta en el peor caso). Se adopta `True`, pendiente de confirmar el coste con el pipeline completo en `sandbox`.
+3. **El determinismo es viable en las tres redes**: ninguna lanza error con `deterministic=True` y las tres se repiten exactamente; sin él, DenseNet121 y EfficientNetB0 no se repiten ni entre dos pasadas idénticas. Cuesta 1,37× a 1,90× por paso (≈ 26 min más por cuenta en el peor caso). Se adopta `True`. El 7 nov, con el pipeline completo en `sandbox`, la proyección quedó en 83 min por cuenta (ver D10).
 4. **Hallazgo metodológico para la memoria:** "30 % de las capas" descongela un porcentaje muy distinto de parámetros según la red (D5). Hay que mencionarlo como limitación del protocolo "mismos hiperparámetros base".
 5. **Qué no se ha hecho:** ningún entrenamiento real. Los números de las métricas vistas hasta ahora (por ejemplo `val_macro_f1` = 0,178) son de modelos sin entrenar y no son resultados.
 
@@ -182,7 +182,7 @@ Lectura:
 - Sin determinismo, DenseNet121 y EfficientNetB0 ya difieren entre dos pasadas idénticas, aunque a un nivel de redondeo (≈10⁻⁷ en la pérdida tras 20 pasos). Aquí no se midió cuánto se amplifica esa diferencia a lo largo de un entrenamiento completo.
 - Las tres penalizaciones superan el umbral de 1,3× fijado antes de medir, así que **por la regla no hay decisión automática: la toma el grupo**.
 
-**Decisión adoptada y ratificada por el grupo (4 nov 2026): `deterministic=True` en las tres redes**, sujeta solo a la comprobación del coste real por época en `sandbox` (si la proyección supera ≈ 2 h por cuenta se vuelve a plantear). Queda reflejada en `configs/base.yaml` (`training.deterministic: true`).
+**Decisión adoptada y ratificada por el grupo (4 nov 2026): `deterministic=True` en las tres redes**, sujeta a que el coste real en `sandbox` no superara ≈ 2 h por cuenta. Esa condición se cumplió el 7 nov (83 min; ver la confirmación más abajo). Queda reflejada en `configs/base.yaml` (`training.deterministic: true`).
 
 **Razonamiento.** El umbral de 1,3× era una aproximación a "el coste es asumible"; el coste absoluto, calculado con estos tiempos, es pequeño:
 
@@ -196,8 +196,21 @@ Lectura:
 Son ≈ 26 min más por cuenta en el peor caso. Es un orden de magnitud, no una promesa: el cálculo usa el tiempo medio de las dos fases juntas (la fase 1 es más ligera) y **no incluye** la lectura de datos ni la predicción en validación de cada época. Con determinismo, `tf.data` además fija el orden de sus operaciones paralelas, lo que podría frenar la entrada de datos y no está medido aquí.
 - *A favor de `True`:* resultado exactamente repetible en el mismo hardware, lo que respalda OE7 y permite que otro integrante o el director reproduzca un número de la memoria; sin errores en ninguna red.
 - *En contra:* +26 min de GPU por cuenta, y la repetibilidad exacta solo vale con la misma GPU y versiones (los runs se reparten entre tres cuentas).
-- **Condición para confirmarlo:** en la prueba de `sandbox` (paso siguiente) se mide el tiempo real por época con el pipeline completo. Si la proyección a 45 épocas supera ≈ 2 h por cuenta, se vuelve a plantear al grupo.
-- Cualquiera que sea el modo, se registra en cada run como `deterministic` (junto con GPU y versión de TensorFlow). Si se confirma, se añadirá a `configs/base.yaml` (`training.deterministic: true`), cambio que necesita el PR aprobado por los tres.
+- **Condición para confirmarlo:** en la prueba de `sandbox` se mide el tiempo real por época con el pipeline completo. Si la proyección a 45 épocas supera ≈ 2 h por cuenta, se vuelve a plantear al grupo.
+- Cualquiera que sea el modo, se registra en cada run como `deterministic` (junto con GPU y versión de TensorFlow). Quedó en `configs/base.yaml` (`training.deterministic: true`) en el PR #7.
+
+**Confirmación (7 nov 2026, `m2_01_entrenamiento.ipynb`, T4, datos completos, 2+2 épocas, semilla 42).** Las tres redes terminaron sin error con `deterministic=True`. La proyección usa el tiempo por paso de la última época de cada fase (220 pasos, 15+30 épocas, sin parada anticipada) y no incluye la validación:
+
+| Arquitectura | ms/paso fase 1 | ms/paso fase 2 | Peor caso |
+|---|---|---|---|
+| ResNet50 | 136 | 199 | 29,3 min |
+| DenseNet121 | 335 | 180 | 38,2 min |
+| EfficientNetB0 | 79 | 103 | 15,6 min |
+| Total por cuenta (3 redes, 1 semilla) | | | **83,1 min** |
+
+La validación (1 502 imágenes, solo hacia delante) no entra en `s_por_paso`. Añadirle un 10 % deja el total en torno a 90 min, por debajo de las ≈ 2 h. **La condición se cumple y se mantiene `deterministic=True`.** El cálculo previo del banco, sin lectura de datos, daba ≈ 74 min: el pipeline completo no cambia el orden de magnitud.
+
+En DenseNet121 la última época de la fase 1 salió más lenta que la de la fase 2 (335 frente a 180 ms/paso). Lo esperable es lo contrario, porque la fase 2 entrena más capas. Con solo dos épocas, esa última de la fase 1 puede seguir incluyendo el calentamiento de `tf.data`, así que 83 min es un techo. Los `val_macro_f1` de estos runs (0,426, 0,428 y 0,313) son de cuatro épocas y no se citan. Runs en `sandbox`: `51776efe5975433eb0f473a30c7b8989`, `9e97c522ffc949e5b3d94ae32275a10d`, `ad3fdffd95e04be4a6484f1019a77e35`. Las tres líneas `[+]` se imprimen después de `mlflow.tensorflow.log_model`, así que DagsHub aceptó el modelo.
 
 **Origen.** Medición propia; ratificada por el grupo el 4 nov 2026. Cada run registra `deterministic`, `gpu` y `tf_version` (`docs/03_mlflow_convenciones.md` §4).
 
@@ -245,14 +258,14 @@ Las pérdidas del bloque 4 salen de 3 lotes de validación sin entrenar de verda
 
 0. ~~Aprobación del PR #7~~ (hecho el 4 nov 2026: D5, D8 y D10 ratificadas).
 1. Callback y bucle de entrenamiento de las dos fases (`f1_*`, `f2_*` en el mismo run, checkpoints en Drive, `BackupAndRestore`, interruptor `MODO`, registro de `deterministic`, `gpu` y `tf_version`).
-2. Prueba en `sandbox` con subconjunto pequeño y 2 épocas, en Colab con GPU: confirma además el tiempo real por época con `deterministic=True` (D10).
+2. ~~Prueba en `sandbox` en Colab~~ (hecha el 7 nov 2026: las tres redes, 2+2 épocas, datos completos; D10 confirmada, 83 min por cuenta).
 3. Los 9 runs, la selección, la evaluación en prueba y el registro de modelos.
 
 ---
 
 ## Paso 2 — `src/training.py`, `tests/test_training.py` y `notebooks/m2_01_entrenamiento.ipynb`
 
-Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la reanudación tras desconexión, el registro en MLflow y el notebook que lo lanza en modo `sandbox` o `real`. **Todavía no hay ningún entrenamiento real**: los resultados de la prueba de 2+2 épocas en Colab se anotarán en la sección "Verificación en Colab del paso 2" cuando se ejecute.
+Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la reanudación tras desconexión, el registro en MLflow y el notebook que lo lanza en modo `sandbox` o `real`. La prueba de `sandbox` en Colab está hecha (7 nov); **todavía no hay ningún entrenamiento real**.
 
 ### D12. Las dos fases en el mismo run, con `step` acumulado
 
@@ -311,10 +324,20 @@ Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la
 - `pytest tests -q`: 28 pruebas en verde (22 de modelos y métricas y 6 nuevas de entrenamiento), 56 s en el portátil.
 - **Ejecución de extremo a extremo en el portátil** (CPU, sin GPU, imágenes reales de `documentos-drive/`, EfficientNetB0 con ImageNet, 2 lotes por época, 1+1 épocas, MLflow local con SQLite): el run se crea con las etiquetas esperadas (`modulo=m2`, `fase=entrenamiento`, `modo=sandbox`, `arch`, `seed`), registra 61 métricas, los parámetros `deterministic=True`, `tf_version=2.21.0`, `gpu=sin GPU`, `n_capas_descongeladas=71`, y los 4 artefactos (`curvas.png`, `confusion_val_norm.png`, `classification_report_val.json`, `predicciones_val.csv`). El modelo se registra con `mlflow.tensorflow.log_model(..., name="modelo")` y **se vuelve a cargar con `mlflow.tensorflow.load_model("runs:/<id>/modelo")`** (el mismo mecanismo que usará M3): `Functional`, salida `(None, 7)`.
 - Los tiempos de esa ejecución (≈ 2,5 y 3,3 s/paso) son de CPU y **no valen para nada** salvo para comprobar que el campo se registra; el coste real se mide en la GPU de Colab.
-- **No verificado todavía:** que `log_model` funcione igual contra DagsHub (el servidor remoto no se ha probado con este formato) y el tiempo real por paso en la T4 con el pipeline completo. Ambos puntos los cubre la prueba de `sandbox` en Colab.
+- DagsHub aceptó `log_model` en los tres runs de la prueba del 7 nov (la línea `[+]` se imprime después). La celda que vuelve a cargar el modelo y compara probabilidades no está en la salida guardada.
+
+### Verificación en Colab del paso 2 (7 nov 2026, `m2_01_entrenamiento.ipynb`, `MODO = "sandbox"`)
+
+| Qué | Resultado |
+|---|---|
+| Tres redes, 2+2 épocas, datos completos, semilla 42, `deterministic=True` | Sin error. Tiempos de pared: ResNet50 6,3 min, DenseNet121 7,0 min, EfficientNetB0 4,4 min (incluyen el primer epoch en frío y la validación) |
+| Proyección de peor caso | 29,3 + 38,2 + 15,6 = **83,1 min por cuenta**. Condición de D10 cumplida |
+| Registro del modelo en DagsHub | Los tres runs devolvieron `run_id`; `log_model` va antes de ese retorno |
+
+**No hecho en esta sesión:** la prueba de reanudación de `modulo2_guia_colab.md` §6.3 (parar a mitad y volver a lanzar). La lógica está cubierta por `tests/test_training.py` con una desconexión simulada; en Colab queda por ver una sola vez, y no bloquea el PR.
 
 ### Qué falta del paso 2
 
-1. Ejecutar `m2_01_entrenamiento.ipynb` en `MODO = "sandbox"` en Colab (3 redes, 2+2 épocas), incluida la prueba de reanudación (ver `modulo2_guia_colab.md`).
-2. Con los `s_por_paso` reales, la proyección de coste: confirma o refuta la condición de D10 (peor caso ≲ 120 min por cuenta para 3 redes y 1 semilla). Si no se cumple, se vuelve a llevar al grupo.
-3. Abrir el PR y obtener la aprobación de los tres (toca `src/`).
+1. ~~Prueba `sandbox` y proyección de D10~~ (hechas el 7 nov).
+2. Abrir el PR y obtener la aprobación de los tres (toca `src/`).
+3. Opcional antes de los runs reales: la prueba de reanudación en Colab (§6.3 de la guía).

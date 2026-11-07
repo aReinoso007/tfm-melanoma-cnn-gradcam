@@ -10,7 +10,7 @@ Entrenar las tres arquitecturas bajo condiciones idénticas, seleccionar el mejo
 - [x] Escribir `src/models.py` con `build_model(arch, num_classes=7)` usando como base ResNet50, DenseNet121 y EfficientNetB0 (`weights="imagenet"`, `include_top=False`) + `GlobalAveragePooling2D` + `Dropout` + `Dense(7, softmax)`. Incluye `congelar_base()` (fase 1) y `descongelar_fraccion()` (fase 2). Rama `m2/modelos-metricas`; razones en [modulo2_registro_decisiones.md](modulo2_registro_decisiones.md) D3–D6.
 - [x] Escribir `src/metrics.py` con todas las métricas de `03_mlflow_convenciones.md` §5, a partir de `y_true` y `y_prob`. Incluye `tabla_predicciones()` para `predicciones_<val|test>.csv` (D7–D8).
 - [x] Pruebas en `tests/` (`python -m pytest tests -q`, 22 pruebas, sin GPU) (D9).
-- [x] Probar el pipeline completo con un **subconjunto pequeño** en el experimento `sandbox` (2 épocas) para detectar errores antes de gastar GPU. **Código y ejecución local de extremo a extremo listos** (`m2_01_entrenamiento.ipynb`, D12–D16); falta ejecutarlo en Colab con GPU.
+- [x] Probar el pipeline completo en el experimento `sandbox` (2+2 épocas, datos completos, T4, 7 nov 2026): las tres redes terminan, DagsHub acepta el modelo y la proyección de D10 queda en 83 min por cuenta. Notebook `m2_01_entrenamiento.ipynb`, decisiones D12–D16.
 
 ## Pasos
 

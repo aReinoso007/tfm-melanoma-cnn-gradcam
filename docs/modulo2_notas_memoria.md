@@ -38,12 +38,13 @@
 
 **Qué contar.**
 - Se midió en las tres redes, en una GPU T4: ninguna operación lanzó error y, con el determinismo activado, dos pasadas con la misma semilla dieron exactamente las mismas pérdidas y los mismos pesos. Sin él, DenseNet121 y EfficientNetB0 no se repitieron entre dos pasadas idénticas (diferencias de redondeo del orden de 10⁻⁷ en la pérdida tras 20 pasos).
-- Coste medido: 1,37× (ResNet50), 1,62× (DenseNet121) y 1,90× (EfficientNetB0) más tiempo por paso.
+- Coste medido en el banco (sin lectura de datos): 1,37× (ResNet50), 1,62× (DenseNet121) y 1,90× (EfficientNetB0) más tiempo por paso.
+- Con el pipeline completo (7 nov, T4, `sandbox`): peor caso de 83 min por cuenta para las tres redes y una semilla (15+30 épocas, sin parada anticipada), del orden de los ≈ 74 min estimados antes. Por debajo del límite de unas 2 h que el grupo puso para mantener el modo determinista.
 - **Alcance:** la repetibilidad exacta es válida con el mismo hardware y las mismas versiones de software. Los entrenamientos se repartieron entre tres cuentas de Colab que podrían recibir GPUs distintas, por lo que se registra la GPU y la versión de TensorFlow en cada run y la reproducibilidad que se defiende es: semillas fijas + trazabilidad completa + media ± desviación estándar sobre tres semillas.
 - *Procedencia:* bloque 4b de `m2_00_verificacion_colab.ipynb` y `scripts/bench_determinismo.py` (4 nov 2026); D10.
 
 **[TEXTO ADAPTABLE]**
-> Para favorecer la reproducibilidad se activó el modo determinista de TensorFlow en todos los entrenamientos. Una comprobación previa en las tres arquitecturas mostró que con este modo dos ejecuciones con la misma semilla producen resultados idénticos, mientras que sin él DenseNet121 y EfficientNetB0 presentaban diferencias de redondeo entre ejecuciones; el coste fue de entre 1,4 y 1,9 veces más tiempo por paso de entrenamiento. La repetibilidad exacta solo está garantizada con el mismo hardware y versiones de software, por lo que se registró en cada ejecución la GPU y la versión de TensorFlow, y los resultados se presentan como media y desviación estándar de tres semillas.
+> Para favorecer la reproducibilidad se activó el modo determinista de TensorFlow en todos los entrenamientos. Una comprobación previa en las tres arquitecturas mostró que con este modo dos ejecuciones con la misma semilla producen resultados idénticos, mientras que sin él DenseNet121 y EfficientNetB0 presentaban diferencias de redondeo entre ejecuciones; el coste fue de entre 1,4 y 1,9 veces más tiempo por paso de entrenamiento. Con el pipeline de datos completo, el peor caso (tres arquitecturas, una semilla, 45 épocas y sin parada anticipada) se proyectó en 83 minutos de GPU por cuenta. La repetibilidad exacta solo está garantizada con el mismo hardware y versiones de software, por lo que se registró en cada ejecución la GPU y la versión de TensorFlow, y los resultados se presentan como media y desviación estándar de tres semillas.
 
 ### 1.3 Otras decisiones que conviene citar como parte del protocolo
 
