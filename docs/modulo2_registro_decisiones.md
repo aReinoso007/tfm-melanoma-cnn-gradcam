@@ -350,5 +350,23 @@ Rama `m2/entrenamiento`. Entrega: el bucle de entrenamiento de las dos fases, la
 ### Qué falta del paso 2
 
 1. ~~Prueba `sandbox` y proyección de D10~~ (hechas el 7 nov).
-2. Abrir el PR y obtener la aprobación de los tres (toca `src/`).
-3. Opcional antes de los runs reales: la prueba de reanudación en Colab (§6.3 de la guía).
+2. ~~PR #8, aprobado y fusionado el 7 nov.~~
+3. Opcional: la prueba de reanudación en Colab (§6.3 de la guía). No bloquea los runs reales.
+
+## Runs reales — semilla 42 (Alex, 7 nov 2026)
+
+Experimento `m2-entrenamiento` (lo creó el primer run). Modo `real`, `main`, `deterministic=True`. Las otras dos semillas todavía no están. **Estos números no eligen modelo.**
+
+| Run | run_id | Tiempo | Épocas f1 / f2 | Mejor `val_loss` f1 (época de la fase) | Mejor `val_loss` f2 | `val_macro_f1` del modelo guardado | `val_mel_sensitivity` |
+|---|---|---|---|---|---|---|---|
+| `m2-resnet50-s42` | `b07eb7d9e4dc4526a31f9b7868255c16` | 14,2 min | 6 / 6 | 0,825 (1) | 1,102 (1) | 0,412 | 0,042 |
+| `m2-densenet121-s42` | `3031ddc150fd485b89a34b1be65d06f2` | 17,2 min | 10 / 6 | 0,804 (5) | 0,931 (1) | 0,446 | 0,084 |
+| `m2-efficientnetb0-s42` | `41ab358735a348f8b89617fe31f75c77` | 9,7 min | 9 / 6 | 0,842 (4) | 1,050 (1) | 0,358 | 0,006 |
+
+Las épocas salen del log: la fase para cuando `val_loss` no mejora en 5 épocas (D13). El `val_macro_f1` de la tabla es el de la línea `[+]`, o sea el del modelo restaurado, que es el mejor de la **fase 2**, no el mejor de todo el entrenamiento.
+
+**Lectura, todavía con una sola semilla.**
+
+- La parada anticipada funcionó. Las tres cuentas de tiempo suman 41 min, por debajo de los 83 min de peor caso de D10, porque ninguna fase agotó sus 15 o 30 épocas.
+- En las tres redes, el mejor punto de la fase 2 es su primera época, y ese `val_loss` es peor que el mejor de la fase 1. Al descongelar, la pérdida de entrenamiento sigue bajando y la de validación sube: la fase 2 no se recupera dentro de la paciencia. El modelo que queda guardado es ese, porque D13 fija como modelo final el mejor de la fase 2. No se cambia el protocolo a mitad de los nueve runs; las otras semillas tienen que usar la misma regla. `f1_mejor_val_loss` y `f2_mejor_val_loss` quedan en el run para poder contarlo en la memoria.
+- La sensibilidad en melanoma de esta semilla queda muy por debajo del 0,80 de la regla de selección. Con una semilla no se concluye nada: la regla se aplica a la media de las tres.
