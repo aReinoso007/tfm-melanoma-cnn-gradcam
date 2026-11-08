@@ -56,7 +56,8 @@ def lanzar_evaluacion_test(arch: str, cfg: dict, autor: str = "alex") -> dict:
     experimento = cfg["mlflow"]["experiments"]["m2_test"]
     exp = client.get_experiment_by_name(experimento)
     if exp is None:
-        raise RuntimeError(f"No existe el experimento {experimento}.")
+        mlflow.set_experiment(experimento)
+        exp = client.get_experiment_by_name(experimento)
     previos = client.search_runs([exp.experiment_id], max_results=100)
     if evaluacion_ya_hecha(previos, arch):
         raise RuntimeError(
