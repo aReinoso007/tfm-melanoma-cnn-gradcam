@@ -90,6 +90,23 @@ def test_umbral_elige_el_t_mas_alto_que_llega_a_0_80():
     assert r["cumple_min_clase"] is False
 
 
+def test_los_falsos_negativos_de_melanoma_marcan_el_rescate():
+    import pandas as pd
+    from src.evaluation import falsos_negativos_mel
+    tabla = pd.DataFrame({
+        "image_id": ["a", "b", "c"],
+        "lesion_id": ["l1", "l2", "l3"],
+        "y_true": ["mel", "mel", "nv"],
+        "y_pred": ["nv", "mel", "mel"],
+        "p_mel": [0.4, 0.8, 0.7],
+        "y_pred_umbral": ["mel", "mel", "mel"],
+    })
+    fn = falsos_negativos_mel(tabla)
+    assert list(fn.image_id) == ["a"]
+    assert fn.iloc[0].y_pred == "nv"
+    assert bool(fn.iloc[0].recuperado_umbral) is True
+
+
 def test_la_evaluacion_en_prueba_no_se_repite():
     from types import SimpleNamespace
     from src.evaluation import evaluacion_ya_hecha

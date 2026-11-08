@@ -428,6 +428,8 @@ Semilla representativa de las tres redes: **2024**. Alias `final` en la versión
 | DenseNet121 | `a16c233b18b043f49a84e5afed0cf3ab` | 0,083365 |
 | EfficientNetB0 | `de11d3148353403ba1c091e6b66f0abf` | 0,198781 |
 
+El corte exacto, el que de verdad deja la sensibilidad en 0,801, es 0,12729512155056, 0,08336453884840012 y 0,1987808346748352. Redondear a seis decimales sube el de DenseNet121 y el de EfficientNetB0, y la sensibilidad baja a 0,795. Antes de abrir la prueba se anota ese corte exacto como `umbral_mel_preciso`. No es otro umbral.
+
 **Umbral.** `umbral_mel` es el valor más alto de p(mel) con el que ese modelo, en validación, llega a sensibilidad de melanoma ≥ 0,80. Si p(mel) ≥ t se predice melanoma; si no, se mantiene el argmax. En los tres, ese punto deja la sensibilidad mínima por clase por debajo de 0,50 (df en ResNet50, akiec en las otras dos) y predice melanoma en el 27–33 % de la validación. El umbral no cambia la ganadora. La selección oficial sigue siendo el argmax. El parámetro queda en el run para que la evaluación en prueba pueda repetir los dos criterios. Esa evaluación no se ha lanzado.
 
 **Fase 2.** En los nueve runs de la v2, el mejor `val_loss` de la fase 2 es menor que el mejor de la fase 1, y el macro-F1 del modelo guardado es mayor. La sensibilidad en melanoma sube en ocho y se queda igual (0,386) en ResNet50 semilla 42. El modelo guardado sigue siendo el mejor de la fase 2 por `val_loss` (D13). No se reentrena.

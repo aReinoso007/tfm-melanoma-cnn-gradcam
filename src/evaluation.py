@@ -6,8 +6,27 @@ en validación. Si el run `m2-test-<arch>` ya tiene `test_evaluado=true`, se nie
 """
 from __future__ import annotations
 
+import pandas as pd
+
 from src.metrics import (CLASES, aplicar_umbral_mel, calcular_metricas, matriz_confusion,
                          prefijar, tabla_predicciones)
+
+
+def clase_minima(metricas: dict) -> str:
+    """Clases empatadas en la sensibilidad más baja. El orden es el de CLASES."""
+    peor = metricas["min_class_sensitivity"]
+    return ",".join(c for c in CLASES if metricas[f"sensitivity_{c}"] == peor)
+
+
+def falsos_negativos_mel(tabla: pd.DataFrame) -> pd.DataFrame:
+    """Melanomas de prueba que el argmax no llama melanoma.
+
+    `recuperado_umbral` es True si la regla p(mel) ≥ umbral sí los llama melanoma.
+    """
+    fn = tabla[(tabla.y_true == "mel") & (tabla.y_pred != "mel")].copy()
+    fn["recuperado_umbral"] = fn.y_pred_umbral == "mel"
+    columnas = ["image_id", "lesion_id", "y_pred", "p_mel", "y_pred_umbral", "recuperado_umbral"]
+    return fn[columnas].reset_index(drop=True)
 
 
 def evaluacion_ya_hecha(runs, arch: str) -> bool:
@@ -50,7 +69,10 @@ def lanzar_evaluacion_test(arch: str, cfg: dict, autor: str = "alex") -> dict:
         raise RuntimeError(
             f"El run final de {arch} no tiene el parámetro umbral_mel. "
             "No se abre el conjunto de prueba.")
-    umbral = float(origen.data.params["umbral_mel"])
+    # umbral_mel_preciso es el mismo corte, con los decimales que el redondeo a 6
+    # se comía. Sin él, DenseNet y EfficientNet se quedan por debajo de 0,80.
+    clave_umbral = "umbral_mel_preciso" if "umbral_mel_preciso" in origen.data.params else "umbral_mel"
+    umbral = float(origen.data.params[clave_umbral])
 
     df = split_df("test")
     ds = make_dataset("test", arch, training=False, batch_size=cfg["training"]["batch_size"])
@@ -65,22 +87,46 @@ def lanzar_evaluacion_test(arch: str, cfg: dict, autor: str = "alex") -> dict:
     metricas_umbral = calcular_metricas(y, probs, y_pred=pred_umbral)
     tabla = tabla_predicciones(df, probs)
     tabla["y_pred_umbral"] = [CLASES[i] for i in pred_umbral]
+    fn = falsos_negativos_mel(tabla)
+    minima = clase_minima(metricas)
+    minima_umbral = clase_minima(metricas_umbral)
 
     mlflow.set_experiment(experimento)
     tags = standard_tags(cfg, modulo="m2", fase="evaluacion-test", autor=autor, arch=arch)
     with mlflow.start_run(run_name=f"m2-test-{arch}", tags=tags):
-        mlflow.log_params({"umbral_mel": umbral, "run_id_modelo": version.run_id,
-                           "modelo_version": version.version})
+        mlflow.log_params({
+            "umbral_mel": umbral,
+            "run_id_modelo": version.run_id,
+            "modelo_version": version.version,
+            "test_clase_minima": minima,
+            "test_umbral_clase_minima": minima_umbral,
+        })
         mlflow.log_metrics({k: v for k, v in prefijar(metricas, "test").items() if v == v})
         mlflow.log_metrics({k: v for k, v in prefijar(metricas_umbral, "test_umbral").items() if v == v})
+        mlflow.log_metrics({
+            "test_n_fn_mel": float(len(fn)),
+            "test_n_fn_mel_recuperados": float(fn.recuperado_umbral.sum()) if len(fn) else 0.0,
+        })
         mlflow.log_figure(figura_confusion(matriz_confusion(y, probs.argmax(1)), f"{arch} argmax"),
                           "confusion_test_norm.png")
         mlflow.log_figure(figura_confusion(matriz_confusion(y, pred_umbral), f"{arch} umbral {umbral:.4f}"),
                           "confusion_test_umbral_norm.png")
         mlflow.log_text(tabla.to_csv(index=False), "predicciones_test.csv")
+        mlflow.log_text(fn.to_csv(index=False), "falsos_negativos_mel.csv")
         mlflow.set_tag("test_evaluado", "true")
         mlflow.set_tag("estado", "final")
         run_id = mlflow.active_run().info.run_id
-    return {"run_id": run_id, "arch": arch, "umbral_mel": umbral,
-            "test_mel_sensitivity": metricas["mel_sensitivity"],
-            "test_umbral_mel_sensitivity": metricas_umbral["mel_sensitivity"]}
+    por_clase = fn.y_pred.value_counts().to_dict() if len(fn) else {}
+    return {
+        "run_id": run_id,
+        "arch": arch,
+        "umbral_mel": umbral,
+        "run_id_modelo": version.run_id,
+        "metricas": metricas,
+        "metricas_umbral": metricas_umbral,
+        "clase_minima": minima,
+        "clase_minima_umbral": minima_umbral,
+        "fn_total": int(len(fn)),
+        "fn_por_clase": por_clase,
+        "fn_recuperados": int(fn.recuperado_umbral.sum()) if len(fn) else 0,
+    }
