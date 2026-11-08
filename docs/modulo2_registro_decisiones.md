@@ -29,6 +29,7 @@ El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian co
 | D17 | El modelo se sube con `save_model` + `log_artifacts` (`modelo/`), no con `log_model` de MLflow 3 | Implementación (DagsHub no sirve el Logged Model) | Sí. Comprobado en DagsHub el 7 nov: las tres redes se recargan y dan las mismas probabilidades |
 | D19 | v2: el mismo aumento para las siete clases; experimento `m2-entrenamiento-v2` | Grupo, 7 nov 2026, tras la comprobación del atajo | Sí. Los runs de la v1 se conservan; los alias se mueven en D20 |
 | D20 | Selección v2: EfficientNetB0, semilla 2024 en las tres redes; `umbral_mel` anotado y la prueba sigue cerrada | Alex, 7 nov 2026, run `905dd96f099c4a968e33f3247318081c` | Sí, en el PR de `m2/seleccion-v2` |
+| D21 | Evaluación en prueba, una sola vez, argmax y umbral; sin cambiar modelo ni selección | Alex, 7 nov 2026, runs `m2-test-*` | Sí, en el mismo PR |
 
 ## Conclusiones del paso 1 (4 nov 2026)
 
@@ -434,4 +435,26 @@ El corte exacto, el que de verdad deja la sensibilidad en 0,801, es 0,1272951215
 
 **Fase 2.** En los nueve runs de la v2, el mejor `val_loss` de la fase 2 es menor que el mejor de la fase 1, y el macro-F1 del modelo guardado es mayor. La sensibilidad en melanoma sube en ocho y se queda igual (0,386) en ResNet50 semilla 42. El modelo guardado sigue siendo el mejor de la fase 2 por `val_loss` (D13). No se reentrena.
 
-**Qué no se hace.** El conjunto de prueba sigue cerrado. El Módulo 3 carga `models:/ham10000-<arch>@final`, que ahora apunta a estas semillas 2024, y espera a la evaluación en prueba.
+**Qué no se hace en esta decisión.** El conjunto de prueba sigue cerrado. El Módulo 3 carga `models:/ham10000-<arch>@final`, que ahora apunta a estas semillas 2024. La evaluación en prueba es D21.
+
+### D21. Evaluación en prueba, una sola vez
+
+**Resultado (7 nov 2026, experimento `m2-evaluacion-test`).** Una pasada por las 1503 imágenes de prueba, 168 de ellas melanoma, sobre la versión 2 de cada alias `final` (semilla 2024). El umbral aplicado es `umbral_mel_preciso`. Tag `test_evaluado=true` y `estado=final`. No se repite. No se cambia el modelo, el umbral ni la selección después de ver estas cifras.
+
+| Arquitectura | Run de prueba | Modelo | Umbral | macro-F1 argmax | Sens. mel argmax | macro-F1 umbral | Sens. mel umbral | Mínima |
+|---|---|---|---|---|---|---|---|---|
+| ResNet50 | `3b89d4d64f6f46d390d74d257a31aa33` | `c009467e38f04b22a0208f6732c58e1a` | 0,127295 | 0,613 | 0,524 | 0,600 | 0,815 | df 0,353 |
+| DenseNet121 | `364bcd927a4b46d4acf897452b611fe7` | `a16c233b18b043f49a84e5afed0cf3ab` | 0,083365 | 0,532 | 0,262 | 0,520 | 0,833 | mel 0,262 / df 0,294 con umbral |
+| EfficientNetB0 | `fd8db8ac7a3140e294820740608294ed` | `de11d3148353403ba1c091e6b66f0abf` | 0,198781 | 0,638 | 0,506 | 0,623 | 0,726 | df 0,412 |
+
+Con argmax, EfficientNetB0 sigue por delante en macro-F1 (0,638) y en balanced accuracy (0,640). Su sensibilidad en melanoma en prueba es 0,506. El umbral fijado en validación sube esa sensibilidad a 0,815, 0,833 y 0,726. EfficientNetB0 no llega a 0,80 en prueba. Ninguna red llega a 0,50 en todas las clases. La clase mínima con argmax es df, mel y df.
+
+Falsos negativos de melanoma con argmax, artefacto `falsos_negativos_mel.csv` de cada run. De 168 melanomas:
+
+| Arquitectura | FN | A dónde van | Recuperados con el umbral |
+|---|---|---|---|
+| ResNet50 | 80 | nv 44, bkl 24, akiec 8, vasc 2, df 1, bcc 1 | 49 |
+| DenseNet121 | 124 | bkl 53, nv 51, akiec 8, df 6, bcc 3, vasc 3 | 96 |
+| EfficientNetB0 | 83 | nv 39, bkl 35, bcc 4, akiec 2, df 2, vasc 1 | 37 |
+
+Artefactos de cada run: `confusion_test_norm.png`, `confusion_test_umbral_norm.png`, `predicciones_test.csv`, `falsos_negativos_mel.csv`. El Módulo 3 parte de estos falsos negativos y del alias `final`, que sigue siendo el argmax.
