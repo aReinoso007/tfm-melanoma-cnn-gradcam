@@ -18,6 +18,8 @@ El objetivo es que **cualquier número o figura de la memoria pueda rastrearse h
 ```
 m1-split-v1
 m2-<arch>-s<seed>            p. ej. m2-resnet50-s42
+m2-seleccion                 decisión de la v1, dentro de `m2-entrenamiento`
+m2-seleccion-v2              decisión de la v2, dentro de `m2-entrenamiento-v2`
 m2-test-<arch>               p. ej. m2-test-densenet121
 m3-gradcam-<arch>
 ```
@@ -41,7 +43,7 @@ Las fases 1 y 2 del fine-tuning van en **el mismo run** (`m2-<arch>-s<seed>`). L
 
 ## 4. Parámetros
 
-Se registra **toda la configuración** de `configs/base.yaml` (aplanada) más lo específico del run: `img_size`, `batch_size`, `optimizer`, `f1_lr`, `f1_epochs`, `f2_lr`, `f2_epochs`, `f2_unfreeze_fraction`, `class_weighting`, `augmentation`, `early_stopping_patience` y `monitor`. Además, en cada run de entrenamiento y de evaluación: `deterministic` (true/false), `gpu` (nombre de la GPU) y `tf_version`, para poder explicar cualquier diferencia entre runs lanzados desde cuentas distintas.
+Se registra **toda la configuración** de `configs/base.yaml` (aplanada) más lo específico del run: `img_size`, `batch_size`, `optimizer`, `f1_lr`, `f1_epochs`, `f2_lr`, `f2_epochs`, `f2_unfreeze_fraction`, `class_weighting`, `augmentation`, `early_stopping_patience` y `monitor`. Además, en cada run de entrenamiento y de evaluación: `deterministic` (true/false), `gpu` (nombre de la GPU) y `tf_version`, para poder explicar cualquier diferencia entre runs lanzados desde cuentas distintas. En la semilla representativa de la v2, `umbral_mel` es el corte de p(mel) medido en validación. No cambia el alias `final`, que sigue siendo el argmax.
 
 ## 5. Métricas
 
@@ -60,7 +62,7 @@ val_specificity_<clase>, val_auc_<clase>, val_ap_<clase>
 ```
 `<clase>` ∈ `akiec, bcc, bkl, df, mel, nv, vasc`
 
-**En prueba** (solo en `m2-evaluacion-test`): las mismas métricas con prefijo `test_`.
+**En prueba** (solo en `m2-evaluacion-test`): las mismas métricas con prefijo `test_` para el argmax, y `test_umbral_*` para la predicción con `umbral_mel`.
 
 ## 6. Artefactos
 
