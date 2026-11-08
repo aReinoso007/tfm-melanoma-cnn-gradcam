@@ -95,7 +95,15 @@ def decidir(resumen: dict) -> dict:
     return {"ganadora": ganadora, "motivo": motivo, "como": como, "cumplen": cumplen, "pasos": pasos}
 
 
-def filas_desde_runs(runs) -> list[dict]:
+def clase_de_la_minima(fila: dict) -> str:
+    """Clase o clases cuya sensibilidad es la mínima de esa semilla."""
+    from src.metrics import CLASES
+    valores = [(c, float(fila[f"sensitivity_{c}"])) for c in CLASES]
+    peor = min(v for _, v in valores)
+    return ", ".join(c for c, v in valores if v == peor)
+
+
+def filas_desde_runs(runs, extras: tuple[str, ...] = ()) -> list[dict]:
     """Convierte runs de MLflow (`search_runs`) en las filas que lee `resumir`.
 
     Solo acepta el nombre `m2-<arch>-s<semilla>` de un run real ya marcado `estado=final`.
@@ -114,6 +122,12 @@ def filas_desde_runs(runs) -> list[dict]:
         faltan = []
         for metrica in METRICAS:
             clave = f"val_{metrica}"
+            if clave not in run.data.metrics:
+                faltan.append(clave)
+            else:
+                fila[metrica] = float(run.data.metrics[clave])
+        for metrica in extras:
+            clave = "val_frac_nv_limpio" if metrica == "frac_nv" else f"val_{metrica}"
             if clave not in run.data.metrics:
                 faltan.append(clave)
             else:
@@ -241,6 +255,133 @@ def lanzar_seleccion(cfg: dict, autor: str = "alex", registrar_alias: bool = Tru
     payload["run_id_seleccion"] = run_id
     payload["markdown"] = texto
     return payload
+
+
+EXTRAS_V2 = ("auc_mel", "auc_macro_ovr", "frac_nv",
+             "sensitivity_akiec", "sensitivity_bcc", "sensitivity_bkl", "sensitivity_df",
+             "sensitivity_mel", "sensitivity_nv", "sensitivity_vasc")
+
+
+def _promediar(resumen: dict, claves: tuple[str, ...]) -> None:
+    for arch in ARQUITECTURAS:
+        for clave in claves:
+            valores = [float(f[clave]) for f in resumen[arch]["semillas"]]
+            resumen[arch][clave] = {"media": mean(valores), "std": stdev(valores)}
+
+
+def a_markdown_v2(resumen: dict, decision: dict) -> str:
+    """Informe de `m2-seleccion-v2`. La regla es la de v1; la tabla añade lo pedido para la memoria."""
+    from src.metrics import CLASES
+    columnas = ("macro_f1", "mel_sensitivity", "mel_precision", "min_class_sensitivity",
+                "balanced_accuracy", "auc_mel", "auc_macro_ovr", "frac_nv")
+    cabecera = "| Arquitectura | " + " | ".join(columnas) + " | Clase de la mínima |"
+    sep = "|---|" + "---|" * len(columnas) + "---|"
+    filas = [cabecera, sep]
+    for arch in ARQUITECTURAS:
+        celdas = [f"{resumen[arch][m]['media']:.3f} ± {resumen[arch][m]['std']:.3f}" for m in columnas]
+        por_semilla = "; ".join(
+            f"s{int(f['seed'])} {clase_de_la_minima(f)}" for f in resumen[arch]["semillas"])
+        filas.append(f"| {arch} | " + " | ".join(celdas) + f" | {por_semilla} |")
+    sens = ["| Arquitectura | " + " | ".join(CLASES) + " |",
+            "|---|" + "---|" * len(CLASES)]
+    for arch in ARQUITECTURAS:
+        celdas = [f"{resumen[arch][f'sensitivity_{c}']['media']:.3f} ± {resumen[arch][f'sensitivity_{c}']['std']:.3f}"
+                  for c in CLASES]
+        sens.append(f"| {arch} | " + " | ".join(celdas) + " |")
+    base = a_markdown(resumen, decision)
+    return (
+        base.replace("# Selección en validación (Módulo 2)",
+                     "# Selección en validación v2 (aumento uniforme)")
+        + "\n## Métricas ampliadas\n\n"
+        + "Fracción nv es la predicha en validación limpia (`val_frac_nv_limpio`). "
+        + "La clase de la mínima es la de cada semilla, no la media.\n\n"
+        + "\n".join(filas) + "\n\n## Sensibilidad por clase\n\n" + "\n".join(sens) + "\n"
+    )
+
+
+def lanzar_seleccion_v2(cfg: dict, autor: str = "alex", registrar_alias: bool = True) -> dict:
+    """Selección sobre `m2-entrenamiento-v2`. Misma regla. Mueve los alias desde la v1.
+
+    El run se llama `m2-seleccion-v2` y no se repite si ya está en `estado=final`.
+    """
+    import mlflow
+    from mlflow.tracking import MlflowClient
+
+    from src.metrics import CLASES
+    from src.tracking import setup_mlflow, standard_tags
+
+    setup_mlflow(cfg)
+    client = MlflowClient()
+    experimento = cfg["mlflow"]["experiments"]["m2_train_v2"]
+    exp = client.get_experiment_by_name(experimento)
+    if exp is None:
+        raise RuntimeError(f"No existe el experimento {experimento}.")
+    previos = [
+        r for r in client.search_runs([exp.experiment_id], max_results=100)
+        if (r.info.run_name or r.data.tags.get("mlflow.runName")) == "m2-seleccion-v2"
+        and r.data.tags.get("estado") == "final"
+    ]
+    if previos:
+        raise RuntimeError(
+            "Ya hay un run m2-seleccion-v2 con estado=final "
+            f"({previos[0].info.run_id}). La selección no se repite."
+        )
+    runs = client.search_runs([exp.experiment_id], max_results=100)
+    extras = EXTRAS_V2
+    filas = filas_desde_runs(runs, extras=extras)
+    resumen = resumir(filas)
+    _promediar(resumen, extras)
+    decision = decidir(resumen)
+    payload = a_json(resumen, decision)
+    for arch in ARQUITECTURAS:
+        for clave in extras:
+            payload["tabla"][arch][clave] = resumen[arch][clave]
+        for fila_json, fila in zip(payload["tabla"][arch]["semillas"], resumen[arch]["semillas"]):
+            fila_json["clase_minima"] = clase_de_la_minima(fila)
+            for clave in extras:
+                fila_json[clave] = float(fila[clave])
+    texto = a_markdown_v2(resumen, decision)
+    mlflow.set_experiment(experimento)
+    tags = standard_tags(cfg, modulo="m2", fase="seleccion", autor=autor, aumento="uniforme")
+    with mlflow.start_run(run_name="m2-seleccion-v2", tags=tags):
+        mlflow.log_dict(payload, "seleccion.json")
+        mlflow.log_text(texto, "seleccion.md")
+        mlflow.set_tag("ganadora", decision["ganadora"])
+        mlflow.set_tag("motivo", decision["motivo"])
+        run_id = mlflow.active_run().info.run_id
+        if registrar_alias:
+            try:
+                _mover_alias_a_v2(client, resumen, decision["ganadora"])
+                mlflow.set_tag("alias", "ok")
+            except Exception as exc:
+                mlflow.set_tag("alias", "error")
+                mlflow.log_text(f"{type(exc).__name__}: {exc}", "alias_error.txt")
+                print("AVISO: la decisión quedó guardada, pero el alias no se pudo mover.")
+                print(type(exc).__name__, exc)
+        mlflow.set_tag("estado", "final")
+    payload["run_id_seleccion"] = run_id
+    payload["markdown"] = texto
+    payload["clases"] = list(CLASES)
+    return payload
+
+
+def _mover_alias_a_v2(client, resumen: dict, ganadora: str) -> None:
+    """Quita `final` y `seleccionado` de la v1 y los pone en la semilla representativa v2."""
+    import mlflow
+
+    for arch in ARQUITECTURAS:
+        nombre = f"ham10000-{arch}"
+        for alias in ("final", "seleccionado"):
+            try:
+                client.delete_registered_model_alias(nombre, alias)
+            except Exception:
+                pass
+        version = mlflow.register_model(
+            f"runs:/{resumen[arch]['run_id_representativo']}/modelo", nombre
+        ).version
+        client.set_registered_model_alias(nombre, "final", version)
+        if arch == ganadora:
+            client.set_registered_model_alias(nombre, "seleccionado", version)
 
 
 def _registrar_alias(client, resumen: dict, ganadora: str) -> None:
