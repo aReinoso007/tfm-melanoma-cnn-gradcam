@@ -30,6 +30,7 @@ El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian co
 | D19 | v2: el mismo aumento para las siete clases; experimento `m2-entrenamiento-v2` | Grupo, 7 nov 2026, tras la comprobación del atajo | Sí. Los runs de la v1 se conservan; los alias se mueven en D20 |
 | D20 | Selección v2: EfficientNetB0, semilla 2024 en las tres redes; `umbral_mel` anotado y la prueba sigue cerrada | Alex, 7 nov 2026, run `905dd96f099c4a968e33f3247318081c` | Sí, en el PR de `m2/seleccion-v2` |
 | D21 | Evaluación en prueba, una sola vez, argmax y umbral; sin cambiar modelo ni selección | Alex, 7 nov 2026, runs `m2-test-*` | Sí, en el mismo PR |
+| D22 | Intervalos de confianza en prueba, bootstrap por lesión, en un run aparte | Alex, 7 nov 2026, run `4c38f67a56d94887a1b0dd90edc7ce3b` | Sí, en el mismo PR |
 
 ## Conclusiones del paso 1 (4 nov 2026)
 
@@ -458,3 +459,9 @@ Falsos negativos de melanoma con argmax, artefacto `falsos_negativos_mel.csv` de
 | EfficientNetB0 | 83 | nv 39, bkl 35, bcc 4, akiec 2, df 2, vasc 1 | 37 |
 
 Artefactos de cada run: `confusion_test_norm.png`, `confusion_test_umbral_norm.png`, `predicciones_test.csv`, `falsos_negativos_mel.csv`. El Módulo 3 parte de estos falsos negativos y del alias `final`, que sigue siendo el argmax.
+
+### D22. Intervalos de confianza en prueba
+
+**Resultado (7 nov 2026, run `4c38f67a56d94887a1b0dd90edc7ce3b`, experimento `m2-evaluacion-test`).** Artefacto `bootstrap_test.md`. No modifica los tres runs `m2-test-*`. Bootstrap estratificado por clase y agrupado por `lesion_id`: 2000 réplicas, semilla 42, percentil 2,5–97,5. 1503 imágenes, 1118 lesiones. Las tres redes comparten las réplicas. El puntual es el de la muestra completa.
+
+Con argmax, EfficientNetB0 menos ResNet50: macro-F1 0,025 [−0,038; 0,086], no significativa; sensibilidad en melanoma −0,018 [−0,112; 0,071], no significativa. EfficientNetB0 menos DenseNet121: macro-F1 0,106 [0,042; 0,168], diferencia significativa; sensibilidad en melanoma 0,244 [0,156; 0,335], diferencia significativa. «Diferencia significativa» quiere decir que el intervalo del 95 % no contiene el 0. No cambia la selección.
