@@ -71,6 +71,7 @@ val_specificity_<clase>, val_auc_<clase>, val_ap_<clase>
 | `m1-split-v1` | `split_v1.csv`, `class_weights.json`, figuras de EDA, `split_report.json` (conteos por clase y subconjunto, comprobación de no fuga) |
 | `m2-<arch>-s<seed>` | `curvas.png`, `confusion_val_norm.png`, `predicciones_val.csv`, `classification_report_val.json`, modelo (`mlflow.tensorflow.log_model`) |
 | `m2-test-<arch>` | `confusion_test_norm.png`, `confusion_test_umbral_norm.png`, `predicciones_test.csv`, `falsos_negativos_mel.csv` |
+| `m2-bootstrap-test` | `bootstrap_test.md`. Run aparte. No modifica los runs `m2-test-*`. |
 | `m3-gradcam-<arch>` | Mapas por imagen (`gradcam/<clase>/<image_id>.png`), `fn_melanoma.csv`, `anotacion_abcde.csv`, `resumen_atajos.json` |
 
 ## 7. Registro de modelos
