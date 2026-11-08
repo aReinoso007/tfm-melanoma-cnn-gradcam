@@ -27,7 +27,10 @@ El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian co
 | D15 | Reanudación tras desconexión de Colab: `BackupAndRestore` + estado en JSON en Drive + marca `<fase>_completa.json` | Acordada la idea (checkpoints en Drive); el diseño, implementación | Sí |
 | D16 | `lanzar_run(modo="sandbox"\|"real")`: en `real` no admite `epochs`/`max_lotes`, exige árbol limpio y confirmación explícita | Interruptor acordado en D11; las guardas, implementación | Sí |
 | D17 | El modelo se sube con `save_model` + `log_artifacts` (`modelo/`), no con `log_model` de MLflow 3 | Implementación (DagsHub no sirve el Logged Model) | Sí. Comprobado en DagsHub el 7 nov: las tres redes se recargan y dan las mismas probabilidades |
-| D19 | v2: el mismo aumento para las siete clases; experimento `m2-entrenamiento-v2` | Grupo, 7 nov 2026, tras la comprobación del atajo | Sí. Los runs y alias de la v1 se conservan |
+| D19 | v2: el mismo aumento para las siete clases; experimento `m2-entrenamiento-v2` | Grupo, 7 nov 2026, tras la comprobación del atajo | Sí. Los runs de la v1 se conservan; los alias se mueven en D20 |
+| D20 | Selección v2: EfficientNetB0, semilla 2024 en las tres redes; `umbral_mel` anotado y la prueba sigue cerrada | Alex, 7 nov 2026, run `905dd96f099c4a968e33f3247318081c` | Sí, en el PR de `m2/seleccion-v2` |
+| D21 | Evaluación en prueba, una sola vez, argmax y umbral; sin cambiar modelo ni selección | Alex, 7 nov 2026, runs `m2-test-*` | Sí, en el mismo PR |
+| D22 | Intervalos de confianza en prueba, bootstrap por lesión, en un run aparte | Alex, 7 nov 2026, run `4c38f67a56d94887a1b0dd90edc7ce3b` | Sí, en el mismo PR |
 
 ## Conclusiones del paso 1 (4 nov 2026)
 
@@ -413,4 +416,52 @@ La diferencia de fracción nv es 0,45–0,58. El ruido entre las tres semillas d
 
 Los runs nuevos van a `m2-entrenamiento-v2`, con el mismo nombre `m2-<arch>-s<semilla>`, tags `aumento=uniforme`, huella SHA-256 de `augmentation.py` y de `base.yaml`, `gpu` y `tf_version`. `estado=final` se pone al terminar sin errores. Los checkpoints van a `checkpoints-v2/`, incluido `f1_mejor.weights.h5`. Cada época registra `f1_val_sens_mel` y `f2_val_sens_mel`. Al cerrar el run se registran `val_frac_nv_limpio`, `val_frac_nv_aumentado`, `val_sens_mel_limpio`, `val_sens_mel_aumentado` y `val_delta_frac_nv`.
 
-**Alarma.** `alarma_delta_frac_nv: 0,20`. Salta si la fracción predicha nv sin aumento menos la media con aumento forzado supera 0,20. Ese corte está por debajo de la mitad del hueco más pequeño de la v1 (0,45) y muy por encima del ruido de las semillas de aumento (≈ 0,03). Si salta, el run sigue en `estado=final` y el tag `alarma_atajo=true`; el piloto no pasa y no se lanzan los otros ocho. `m2-entrenamiento`, `m2-seleccion` y los alias `final` y `seleccionado` de la v1 no se tocan. `m2-seleccion-v2` y la comparación v1 contra v2 esperan a los nueve runs. El conjunto de prueba sigue cerrado.
+**Alarma.** `alarma_delta_frac_nv: 0,20`. Salta si la fracción predicha nv sin aumento menos la media con aumento forzado supera 0,20. Ese corte está por debajo de la mitad del hueco más pequeño de la v1 (0,45) y muy por encima del ruido de las semillas de aumento (≈ 0,03). Si salta, el run sigue en `estado=final` y el tag `alarma_atajo=true`; el piloto no pasa y no se lanzan los otros ocho. `m2-entrenamiento` y `m2-seleccion` no se tocan. En el momento de esta decisión los alias `final` y `seleccionado` seguían en la v1; D20 los mueve. El conjunto de prueba sigue cerrado.
+
+### D20. Selección v2 y umbral de melanoma
+
+**Resultado (7 nov 2026, run `905dd96f099c4a968e33f3247318081c`, experimento `m2-entrenamiento-v2`).** Los nueve runs de la v2 están en `estado=final` y `alarma_atajo=false`. El delta de fracción nv queda entre −0,021 y +0,011, dentro del corte 0,20 de D19. Ninguna arquitectura cumple a la vez sensibilidad en melanoma ≥ 0,80 y sensibilidad ≥ 0,50 en todas las clases. Gana **EfficientNetB0** por sensibilidad en melanoma (0,498 ± 0,049), por delante de ResNet50 (0,436 ± 0,055) y DenseNet121 (0,384 ± 0,030). La diferencia con ResNet50 es 0,062, mayor que la desviación más grande de las dos (0,055), así que no hay desempate por balanced accuracy. Macro-F1 de la ganadora: 0,644 ± 0,008.
+
+Semilla representativa de las tres redes: **2024**. Alias `final` en la versión 2 de cada modelo registrado. EfficientNetB0 lleva además `seleccionado`. La versión 1, la de la v1, se queda en el registro sin alias.
+
+| Arquitectura | Run | `umbral_mel` |
+|---|---|---|
+| ResNet50 | `c009467e38f04b22a0208f6732c58e1a` | 0,127295 |
+| DenseNet121 | `a16c233b18b043f49a84e5afed0cf3ab` | 0,083365 |
+| EfficientNetB0 | `de11d3148353403ba1c091e6b66f0abf` | 0,198781 |
+
+El corte exacto, el que de verdad deja la sensibilidad en 0,801, es 0,12729512155056, 0,08336453884840012 y 0,1987808346748352. Redondear a seis decimales sube el de DenseNet121 y el de EfficientNetB0, y la sensibilidad baja a 0,795. Antes de abrir la prueba se anota ese corte exacto como `umbral_mel_preciso`. No es otro umbral.
+
+**Umbral.** `umbral_mel` es el valor más alto de p(mel) con el que ese modelo, en validación, llega a sensibilidad de melanoma ≥ 0,80. Si p(mel) ≥ t se predice melanoma; si no, se mantiene el argmax. En los tres, ese punto deja la sensibilidad mínima por clase por debajo de 0,50 (df en ResNet50, akiec en las otras dos) y predice melanoma en el 27–33 % de la validación. El umbral no cambia la ganadora. La selección oficial sigue siendo el argmax. El parámetro queda en el run para que la evaluación en prueba pueda repetir los dos criterios. Esa evaluación no se ha lanzado.
+
+**Fase 2.** En los nueve runs de la v2, el mejor `val_loss` de la fase 2 es menor que el mejor de la fase 1, y el macro-F1 del modelo guardado es mayor. La sensibilidad en melanoma sube en ocho y se queda igual (0,386) en ResNet50 semilla 42. El modelo guardado sigue siendo el mejor de la fase 2 por `val_loss` (D13). No se reentrena.
+
+**Qué no se hace en esta decisión.** El conjunto de prueba sigue cerrado. El Módulo 3 carga `models:/ham10000-<arch>@final`, que ahora apunta a estas semillas 2024. La evaluación en prueba es D21.
+
+### D21. Evaluación en prueba, una sola vez
+
+**Resultado (7 nov 2026, experimento `m2-evaluacion-test`).** Una pasada por las 1503 imágenes de prueba, 168 de ellas melanoma, sobre la versión 2 de cada alias `final` (semilla 2024). El umbral aplicado es `umbral_mel_preciso`. Tag `test_evaluado=true` y `estado=final`. No se repite. No se cambia el modelo, el umbral ni la selección después de ver estas cifras.
+
+| Arquitectura | Run de prueba | Modelo | Umbral | macro-F1 argmax | Sens. mel argmax | macro-F1 umbral | Sens. mel umbral | Mínima |
+|---|---|---|---|---|---|---|---|---|
+| ResNet50 | `3b89d4d64f6f46d390d74d257a31aa33` | `c009467e38f04b22a0208f6732c58e1a` | 0,127295 | 0,613 | 0,524 | 0,600 | 0,815 | df 0,353 |
+| DenseNet121 | `364bcd927a4b46d4acf897452b611fe7` | `a16c233b18b043f49a84e5afed0cf3ab` | 0,083365 | 0,532 | 0,262 | 0,520 | 0,833 | mel 0,262 / df 0,294 con umbral |
+| EfficientNetB0 | `fd8db8ac7a3140e294820740608294ed` | `de11d3148353403ba1c091e6b66f0abf` | 0,198781 | 0,638 | 0,506 | 0,623 | 0,726 | df 0,412 |
+
+Con argmax, EfficientNetB0 sigue por delante en macro-F1 (0,638) y en balanced accuracy (0,640). Su sensibilidad en melanoma en prueba es 0,506. El umbral fijado en validación sube esa sensibilidad a 0,815, 0,833 y 0,726. EfficientNetB0 no llega a 0,80 en prueba. Ninguna red llega a 0,50 en todas las clases. La clase mínima con argmax es df, mel y df.
+
+Falsos negativos de melanoma con argmax, artefacto `falsos_negativos_mel.csv` de cada run. De 168 melanomas:
+
+| Arquitectura | FN | A dónde van | Recuperados con el umbral |
+|---|---|---|---|
+| ResNet50 | 80 | nv 44, bkl 24, akiec 8, vasc 2, df 1, bcc 1 | 49 |
+| DenseNet121 | 124 | bkl 53, nv 51, akiec 8, df 6, bcc 3, vasc 3 | 96 |
+| EfficientNetB0 | 83 | nv 39, bkl 35, bcc 4, akiec 2, df 2, vasc 1 | 37 |
+
+Artefactos de cada run: `confusion_test_norm.png`, `confusion_test_umbral_norm.png`, `predicciones_test.csv`, `falsos_negativos_mel.csv`. El Módulo 3 parte de estos falsos negativos y del alias `final`, que sigue siendo el argmax.
+
+### D22. Intervalos de confianza en prueba
+
+**Resultado (7 nov 2026, run `4c38f67a56d94887a1b0dd90edc7ce3b`, experimento `m2-evaluacion-test`).** Artefacto `bootstrap_test.md`. No modifica los tres runs `m2-test-*`. Bootstrap estratificado por clase y agrupado por `lesion_id`: 2000 réplicas, semilla 42, percentil 2,5–97,5. 1503 imágenes, 1118 lesiones. Las tres redes comparten las réplicas. El puntual es el de la muestra completa.
+
+Con argmax, EfficientNetB0 menos ResNet50: macro-F1 0,025 [−0,038; 0,086], no significativa; sensibilidad en melanoma −0,018 [−0,112; 0,071], no significativa. EfficientNetB0 menos DenseNet121: macro-F1 0,106 [0,042; 0,168], diferencia significativa; sensibilidad en melanoma 0,244 [0,156; 0,335], diferencia significativa. «Diferencia significativa» quiere decir que el intervalo del 95 % no contiene el 0. No cambia la selección.

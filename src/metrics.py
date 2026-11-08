@@ -62,7 +62,7 @@ def matriz_confusion(y_true, y_pred, normalizar: bool = True) -> np.ndarray:
     return cm
 
 
-def calcular_metricas(y_true, y_prob) -> dict[str, float]:
+def calcular_metricas(y_true, y_prob, y_pred=None) -> dict[str, float]:
     """Todas las métricas de `docs/03_mlflow_convenciones.md` §5, sin prefijo.
 
     Devuelve un diccionario plano {nombre: float}. Con `prefijar(m, "val")` o
@@ -79,7 +79,11 @@ def calcular_metricas(y_true, y_prob) -> dict[str, float]:
         sensitivity_<c>, precision_<c>, f1_<c>, specificity_<c>, auc_<c>, ap_<c>
     """
     y_true, y_prob = _validar(y_true, y_prob)
-    y_pred = y_prob.argmax(axis=1)
+    if y_pred is None:
+        y_pred = y_prob.argmax(axis=1)
+    else:
+        y_pred = np.asarray(y_pred).astype(int)
+        assert y_pred.shape == y_true.shape, (y_pred.shape, y_true.shape)
     k = len(CLASES)
 
     cm = confusion_matrix(y_true, y_pred, labels=range(k))
@@ -136,6 +140,50 @@ def calcular_metricas(y_true, y_prob) -> dict[str, float]:
     # Requisito 2 de la regla: ninguna clase por debajo del 50 %. Se resume en un solo número.
     m["min_class_sensitivity"] = float(np.min(sens_por_clase))
     return m
+
+
+def aplicar_umbral_mel(y_prob, t: float) -> np.ndarray:
+    """Si p(mel) ≥ t, la predicción es melanoma; si no, se queda el argmax."""
+    y_prob = np.asarray(y_prob, dtype=np.float64)
+    pred = y_prob.argmax(axis=1).copy()
+    pred[y_prob[:, IDX_MEL] >= t] = IDX_MEL
+    return pred
+
+
+def barrer_umbral_mel(y_true, y_prob, objetivo: float = 0.80) -> dict:
+    """El t más alto con sensibilidad en melanoma ≥ `objetivo`.
+
+    El barrido usa las probabilidades distintas de melanoma: la sensibilidad solo
+    cambia al cruzar una de ellas. Si ninguna llega al objetivo, `alcanza` es False
+    y no hay umbral elegido.
+    """
+    y_true = np.asarray(y_true).astype(int)
+    y_prob = np.asarray(y_prob, dtype=np.float64)
+    candidatos = np.sort(np.unique(y_prob[:, IDX_MEL]))[::-1]
+    elegido = None
+    for t in candidatos:
+        pred = aplicar_umbral_mel(y_prob, float(t))
+        m = calcular_metricas(y_true, y_prob, y_pred=pred)
+        if m["mel_sensitivity"] + 1e-12 >= objetivo:
+            elegido = (float(t), m, pred)
+            break
+    if elegido is None:
+        return {"alcanza": False, "t": None}
+    t, m, pred = elegido
+    peor = float(m["min_class_sensitivity"])
+    clases = [c for c in CLASES if m[f"sensitivity_{c}"] == peor]
+    return {
+        "alcanza": True,
+        "t": t,
+        "mel_sensitivity": m["mel_sensitivity"],
+        "mel_precision": m["mel_precision"],
+        "macro_f1": m["macro_f1"],
+        "min_class_sensitivity": peor,
+        "clase_minima": clases,
+        "frac_pred_mel": float((pred == IDX_MEL).mean()),
+        "cumple_min_clase": peor + 1e-12 >= 0.50,
+        "metricas": m,
+    }
 
 
 def prefijar(m: dict[str, float], prefijo: str) -> dict[str, float]:
