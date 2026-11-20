@@ -60,6 +60,34 @@ def test_fase2_descongela_la_fraccion_superior_y_deja_bn_congeladas(arch):
     assert any(l.trainable and l.weights for l in base[-r["n_capas_descongeladas"]:])
 
 
+@pytest.mark.parametrize("arch", ARQUITECTURAS)
+def test_fase2_al_100_descongela_la_base_salvo_bn(arch):
+    m = build_model(arch, weights=None)
+    congelar_base(m)
+    r = descongelar_fraccion(m, 1.0, congelar_bn=True)
+    base = capas_base(m)
+    assert r["n_capas_descongeladas"] == len(base)
+    assert bn_entrenables(m) == 0
+    for capa in base:
+        if isinstance(capa, keras.layers.BatchNormalization):
+            assert capa.trainable is False
+        else:
+            assert capa.trainable is True
+
+
+def test_la_configuracion_v3_solo_cambia_la_fraccion():
+    from src.tracking import load_config
+    base = load_config("configs/base.yaml")
+    v3 = load_config("configs/m2_v3.yaml")
+    assert base["training"]["phase2"]["unfreeze_fraction"] == 0.3
+    assert v3["training"]["phase2"]["unfreeze_fraction"] == 1.0
+    assert v3["training"]["phase2"]["freeze_batchnorm"] is True
+    assert v3["data"]["augmentation"] == base["data"]["augmentation"]
+    assert v3["mlflow"]["experiments"]["m2_train_v2"] == "m2-entrenamiento-v2"
+    assert v3["mlflow"]["experiments"]["m2_train_v3"] == "m2-entrenamiento-v3"
+    assert v3["paths"]["checkpoints_v2_dir"] == base["paths"]["checkpoints_v2_dir"]
+
+
 def test_bn_no_actualiza_estadisticas_al_entrenar():
     """Una BN con trainable=False debe usar y conservar sus estadísticas móviles al hacer fit."""
     m = build_model("resnet50", weights=None)
