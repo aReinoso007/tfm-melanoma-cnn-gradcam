@@ -394,8 +394,9 @@ def lanzar_run(arch: str, seed: int, cfg: dict, modo: str, autor: str, max_lotes
                model_kwargs: dict | None = None) -> dict:
     """Un run completo (arquitectura × semilla) registrado en MLflow.
 
-    modo="real"    -> experimento `m2-entrenamiento-v2`, run `m2-<arch>-s<seed>`,
-                      checkpoints en `checkpoints-v2`. Exige git limpio. El experimento v1 no se toca.
+    modo="real"    -> con `config_version` 3, experimento `m2-entrenamiento-v3` y
+                      checkpoints en `checkpoints-v3`. Si no, experimento `m2-entrenamiento-v2`
+                      y `checkpoints-v2`. Exige git limpio. El experimento v1 no se toca.
     modo="sandbox" -> experimento `sandbox`, run `m2-<arch>-s<seed>-sandbox`; permite acortar con
                       `epochs=(e1, e2)` y `max_lotes` (nº de lotes de train y de validación).
     En real `epochs` y `max_lotes` no se pueden usar: los 9 runs deben ser idénticos.
@@ -416,9 +417,13 @@ def lanzar_run(arch: str, seed: int, cfg: dict, modo: str, autor: str, max_lotes
         if git_dirty():
             raise RuntimeError("Hay cambios sin commit: un run real con git_dirty=true no vale como "
                                "resultado final. Haz commit y push antes de lanzarlo.")
-        experimento = cfg["mlflow"]["experiments"]["m2_train_v2"]
         run_name = f"m2-{arch}-s{seed}"
-        state_dir = Path(cfg["paths"]["checkpoints_v2_dir"]) / run_name
+        if cfg.get("config_version") == 3:
+            experimento = cfg["mlflow"]["experiments"]["m2_train_v3"]
+            state_dir = Path(cfg["paths"]["checkpoints_v3_dir"]) / run_name
+        else:
+            experimento = cfg["mlflow"]["experiments"]["m2_train_v2"]
+            state_dir = Path(cfg["paths"]["checkpoints_v2_dir"]) / run_name
     else:
         experimento = cfg["mlflow"]["experiments"]["sandbox"]
         run_name = f"m2-{arch}-s{seed}-sandbox"
@@ -437,10 +442,18 @@ def lanzar_run(arch: str, seed: int, cfg: dict, modo: str, autor: str, max_lotes
 
     model = build_model(arch, dropout=t["dropout"], **(model_kwargs or {}))
     mlflow.set_experiment(experimento)
+    etiquetas_extra = {}
+    if cfg.get("config_version") == 3:
+        etiquetas_extra = {
+            "experimento": "v3",
+            "descongelado": "1.0",
+            "config_sha256": file_sha256("configs/m2_v3.yaml"),
+        }
     tags = standard_tags(cfg, modulo="m2", fase="entrenamiento", autor=autor, arch=arch, seed=seed,
                          modo=modo, aumento=cfg["data"]["augmentation"]["politica"],
                          augmentation_py_sha256=file_sha256("src/augmentation.py"),
-                         base_yaml_sha256=file_sha256("configs/base.yaml"))
+                         base_yaml_sha256=file_sha256("configs/base.yaml"),
+                         **etiquetas_extra)
     t0 = time.time()
 
     with start_or_resume_run(run_name, state_dir, tags=tags):
@@ -463,7 +476,7 @@ def lanzar_run(arch: str, seed: int, cfg: dict, modo: str, autor: str, max_lotes
             "n_capas_descongeladas": r["info_f2"]["n_capas_descongeladas"],
             "params_entrenables_f1": r["info_f1"]["params_entrenables"],
             "params_entrenables_f2": r["info_f2"]["params_entrenables"],
-            "params_total": r["info_f2"]["params_total"],
+            "params_total": int(model.count_params()),
             "n_val_evaluadas": n})
         for f, k in (("f1", "fase1"), ("f2", "fase2")):
             mlflow.log_params({f"{f}_epocas_ejecutadas": r[k]["epocas_ejecutadas"],

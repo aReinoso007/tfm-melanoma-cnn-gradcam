@@ -198,6 +198,86 @@ def a_markdown(resultado: dict) -> str:
     return "\n".join(lineas)
 
 
+def diferencia_pareada(tabla_nueva: pd.DataFrame, tabla_base: pd.DataFrame,
+                       n: int = N_REPLICAS, semilla: int = SEMILLA,
+                       criterio: str = "argmax") -> dict:
+    """Diferencia de `tabla_nueva` menos `tabla_base`, en las mismas réplicas.
+
+    `criterio` es `argmax` o `umbral`. Devuelve el puntual y el percentil 2,5–97,5
+    de macro-F1 y de sensibilidad en melanoma.
+    """
+    if criterio not in ("argmax", "umbral"):
+        raise ValueError(criterio)
+    if not tabla_nueva.image_id.equals(tabla_base.image_id):
+        raise ValueError("Las dos tablas no tienen las mismas imágenes en el mismo orden.")
+    nueva, base = _codificar(tabla_nueva), _codificar(tabla_base)
+    punto_n = _medir(nueva["y"], nueva[criterio], nueva["p_mel"])
+    punto_b = _medir(base["y"], base[criterio], base["p_mel"])
+    acumulado = {0: [], 2: []}
+    for idx in replicas(tabla_nueva, n, semilla):
+        mn = _medir(nueva["y"][idx], nueva[criterio][idx], nueva["p_mel"][idx])
+        mb = _medir(base["y"][idx], base[criterio][idx], base["p_mel"][idx])
+        acumulado[0].append(mn[0] - mb[0])
+        acumulado[2].append(mn[2] - mb[2])
+    salida = {}
+    for nombre, j in (("macro_f1", 0), ("mel_sensitivity", 2)):
+        lo, hi = np.percentile(acumulado[j], [2.5, 97.5])
+        salida[nombre] = {
+            "punto": float(punto_n[j] - punto_b[j]),
+            "bajo": float(lo),
+            "alto": float(hi),
+            "incluye_cero": bool(lo <= 0 <= hi),
+        }
+    return salida
+
+
+def intervalos_tabla(tabla: pd.DataFrame, n: int = N_REPLICAS,
+                     semilla: int = SEMILLA) -> dict:
+    """Intervalo del 95 % de una tabla, con argmax y con el umbral."""
+    c = _codificar(tabla)
+    punto = {crit: _medir(c["y"], c[crit], c["p_mel"]) for crit in ("argmax", "umbral")}
+    muestras = {crit: np.empty((n, len(METRICAS))) for crit in ("argmax", "umbral")}
+    for i, idx in enumerate(replicas(tabla, n, semilla)):
+        y, p = c["y"][idx], c["p_mel"][idx]
+        for crit in ("argmax", "umbral"):
+            muestras[crit][i] = _medir(y, c[crit][idx], p)
+    salida = {}
+    for crit in ("argmax", "umbral"):
+        lo = np.percentile(muestras[crit], 2.5, axis=0)
+        hi = np.percentile(muestras[crit], 97.5, axis=0)
+        salida[crit] = {
+            nombre: {"punto": float(punto[crit][j]), "bajo": float(lo[j]), "alto": float(hi[j])}
+            for j, nombre in enumerate(METRICAS)
+        }
+    return salida
+
+
+PARES_V3 = (("resnet50", "densenet121"), ("resnet50", "efficientnetb0"),
+            ("densenet121", "efficientnetb0"))
+
+
+def diferencias_entre_redes(tablas: dict[str, pd.DataFrame], n: int = N_REPLICAS,
+                            semilla: int = SEMILLA) -> list[dict]:
+    """Diferencias pareadas entre las tres redes, en las mismas réplicas.
+
+    Cada entrada es la primera red menos la segunda, con argmax y con umbral.
+    """
+    base = tablas["resnet50"]
+    for arch, tabla in tablas.items():
+        if not tabla.image_id.equals(base.image_id):
+            raise ValueError(f"{arch} no está alineada con resnet50.")
+    salida = []
+    for izquierda, derecha in PARES_V3:
+        for criterio in ("argmax", "umbral"):
+            diff = diferencia_pareada(tablas[izquierda], tablas[derecha], n, semilla, criterio)
+            for metrica, valores in diff.items():
+                salida.append({
+                    "izquierda": izquierda, "derecha": derecha, "criterio": criterio,
+                    "metrica": metrica, **valores,
+                })
+    return salida
+
+
 def lanzar_bootstrap(cfg: dict, autor: str = "alex", n: int = N_REPLICAS,
                      semilla: int = SEMILLA) -> dict:
     """Crea el run `m2-bootstrap-test` y deja `bootstrap_test.md`. No toca los runs de prueba."""

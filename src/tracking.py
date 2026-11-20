@@ -31,9 +31,26 @@ import yaml
 # Configuración
 # ---------------------------------------------------------------------------
 
+def _combinar(base: dict, cambios: dict) -> dict:
+    """Mezcla `cambios` sobre `base`. Los diccionarios se combinan; el resto se sustituye."""
+    salida = dict(base)
+    for clave, valor in cambios.items():
+        if isinstance(valor, dict) and isinstance(salida.get(clave), dict):
+            salida[clave] = _combinar(salida[clave], valor)
+        else:
+            salida[clave] = valor
+    return salida
+
+
 def load_config(path: str | Path = "configs/base.yaml") -> dict:
+    """Lee un YAML. Si trae `extends`, parte de ese archivo y aplica solo las claves propias."""
+    path = Path(path)
     with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f) or {}
+    padre = cfg.pop("extends", None)
+    if padre:
+        cfg = _combinar(load_config(path.parent / padre), cfg)
+    return cfg
 
 
 def _flatten(d: dict, parent: str = "", sep: str = ".") -> dict:

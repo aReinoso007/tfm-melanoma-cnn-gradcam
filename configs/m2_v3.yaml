@@ -1,0 +1,17 @@
+# v3: la fase 2 descongela el 100 % de las capas de la base.
+# Hereda el resto de configs/base.yaml. No modifica la v1 ni la v2.
+extends: base.yaml
+
+config_version: 3
+
+mlflow:
+  experiments:
+    m2_train_v3: "m2-entrenamiento-v3"
+    m2_test_v3: "m2-evaluacion-test-v3"
+
+paths:
+  checkpoints_v3_dir: "/content/drive/MyDrive/TFM/checkpoints-v3"
+
+training:
+  phase2:
+    unfreeze_fraction: 1.0

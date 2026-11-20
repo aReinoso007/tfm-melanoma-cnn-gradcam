@@ -120,6 +120,39 @@ def test_la_evaluacion_en_prueba_no_se_repite():
     assert evaluacion_ya_hecha([run("m2-test-densenet121", "true")], "resnet50") is False
 
 
+def test_la_tabla_v3_pone_las_dos_versiones_y_el_alias_no_toca_final(monkeypatch):
+    from src.selection import ALIAS_V3, _poner_alias_v3, tabla_v2_contra_v3
+
+    def bloque(valor):
+        return {m: {"media": valor, "std": 0.01} for m in
+                ("macro_f1", "mel_sensitivity", "auc_mel", "balanced_accuracy",
+                 "min_class_sensitivity", "frac_nv")}
+
+    texto = tabla_v2_contra_v3(
+        {a: bloque(0.2) for a in ("resnet50", "densenet121", "efficientnetb0")},
+        {a: bloque(0.4) for a in ("resnet50", "densenet121", "efficientnetb0")},
+    )
+    assert texto.count("| v2 |") == 3 and texto.count("| v3 |") == 3
+
+    class Cliente:
+        def __init__(self):
+            self.alias = []
+            self.borrados = []
+
+        def set_registered_model_alias(self, nombre, alias, version):
+            self.alias.append(alias)
+
+        def delete_registered_model_alias(self, *args):
+            self.borrados.append(args)
+
+    monkeypatch.setattr("mlflow.register_model", lambda *a, **k: type("V", (), {"version": "3"})())
+    cliente = Cliente()
+    _poner_alias_v3(cliente, {a: {"run_id_representativo": "r"} for a in
+                              ("resnet50", "densenet121", "efficientnetb0")})
+    assert cliente.alias == [ALIAS_V3] * 3
+    assert cliente.borrados == []
+
+
 def test_rechaza_un_conjunto_que_no_es_de_nueve():
     with pytest.raises(ValueError, match="exactamente 9"):
         resumir(_filas({"resnet50": [_plano(0.1, 0.1, 0.1)] * 3,
