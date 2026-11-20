@@ -197,8 +197,15 @@ def anotar_umbrales_v3(cfg: dict) -> list[dict]:
         if "umbral_mel" not in params:
             client.log_param(run_id, "umbral_mel", preciso)
             client.log_param(run_id, "umbral_mel_preciso", preciso)
-        elif params.get("umbral_mel_preciso", params["umbral_mel"]) != preciso:
-            raise RuntimeError(f"{arch} ya tiene un umbral_mel distinto de {preciso}.")
+        else:
+            guardado = float(params.get("umbral_mel_preciso", params["umbral_mel"]))
+            # El mismo corte puede imprimirse con un dígito de más o de menos según
+            # el `repr` de NumPy. No es otro umbral.
+            if abs(guardado - float(corte["t"])) > 1e-12:
+                raise RuntimeError(
+                    f"{arch} ya tiene umbral_mel={guardado}, distinto de {preciso}."
+                )
+            corte["t"] = guardado
         salida.append({"arch": arch, "run_id": run_id, **corte})
     return salida
 
