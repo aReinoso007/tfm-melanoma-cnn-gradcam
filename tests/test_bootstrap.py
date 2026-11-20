@@ -44,6 +44,9 @@ def test_la_diferencia_de_una_tabla_consigo_misma_incluye_el_cero():
     assert d["macro_f1"]["punto"] == 0
     assert d["macro_f1"]["incluye_cero"] is True
     assert d["mel_sensitivity"]["incluye_cero"] is True
+    umbral = diferencia_pareada(tabla, tabla.copy(), n=30, semilla=3, criterio="umbral")
+    assert umbral["macro_f1"]["punto"] == 0
+    assert umbral["mel_sensitivity"]["incluye_cero"] is True
 
 
 def test_la_misma_semilla_repite_el_intervalo():
@@ -61,3 +64,20 @@ def test_la_misma_semilla_repite_el_intervalo():
     assert a["intervalos"]["efficientnetb0"]["argmax"]["macro_f1"] == \
         b["intervalos"]["efficientnetb0"]["argmax"]["macro_f1"]
     assert len(a["comparaciones"]) == 4
+
+
+def test_las_tres_redes_se_comparan_con_los_dos_criterios():
+    from src.bootstrap import diferencias_entre_redes, intervalos_tabla
+    filas = []
+    for i, clase in enumerate(["mel", "nv", "df", "bkl", "bcc", "akiec", "vasc"]):
+        filas.append({
+            "image_id": f"i{i}", "lesion_id": f"L{i}", "y_true": clase,
+            "y_pred": clase, "y_pred_umbral": clase,
+        })
+    tabla = _tabla(filas)
+    intervalos = intervalos_tabla(tabla, n=20, semilla=1)
+    assert set(intervalos) == {"argmax", "umbral"}
+    tablas = {arch: tabla.copy() for arch in ("resnet50", "densenet121", "efficientnetb0")}
+    filas_diff = diferencias_entre_redes(tablas, n=20, semilla=1)
+    assert len(filas_diff) == 12
+    assert all(fila["punto"] == 0 for fila in filas_diff)
