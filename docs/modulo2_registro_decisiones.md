@@ -31,6 +31,7 @@ El PR #7 se fusionó en `main` el 4 nov 2026 (aprobado por Adrián; Christian co
 | D20 | Selección v2: EfficientNetB0, semilla 2024 en las tres redes; `umbral_mel` anotado y la prueba sigue cerrada | Alex, 7 nov 2026, run `905dd96f099c4a968e33f3247318081c` | Sí, en el PR de `m2/seleccion-v2` |
 | D21 | Evaluación en prueba, una sola vez, argmax y umbral; sin cambiar modelo ni selección | Alex, 7 nov 2026, runs `m2-test-*` | Sí, en el mismo PR |
 | D22 | Intervalos de confianza en prueba, bootstrap por lesión, en un run aparte | Alex, 7 nov 2026, run `4c38f67a56d94887a1b0dd90edc7ce3b` | Sí, en el mismo PR |
+| D23 | v3: fase 2 con el 100 % de la base descongelada; la v2 y sus alias no se mueven | Director, 20 nov 2026 | Sí, en el PR de `exp/m2-v3-descongelado-100` |
 
 ## Conclusiones del paso 1 (4 nov 2026)
 
@@ -465,3 +466,11 @@ Artefactos de cada run: `confusion_test_norm.png`, `confusion_test_umbral_norm.p
 **Resultado (7 nov 2026, run `4c38f67a56d94887a1b0dd90edc7ce3b`, experimento `m2-evaluacion-test`).** Artefacto `bootstrap_test.md`. No modifica los tres runs `m2-test-*`. Bootstrap estratificado por clase y agrupado por `lesion_id`: 2000 réplicas, semilla 42, percentil 2,5–97,5. 1503 imágenes, 1118 lesiones. Las tres redes comparten las réplicas. El puntual es el de la muestra completa.
 
 Con argmax, EfficientNetB0 menos ResNet50: macro-F1 0,025 [−0,038; 0,086], no significativa; sensibilidad en melanoma −0,018 [−0,112; 0,071], no significativa. EfficientNetB0 menos DenseNet121: macro-F1 0,106 [0,042; 0,168], diferencia significativa; sensibilidad en melanoma 0,244 [0,156; 0,335], diferencia significativa. «Diferencia significativa» quiere decir que el intervalo del 95 % no contiene el 0. No cambia la selección.
+
+### D23. Fase 2 con la base descongelada al 100 %
+
+**Decisión.** Un solo cambio respecto a la v2. En la fase 2 se descongela el 100 % de las capas de la base. La BatchNormalization sigue congelada. El resto del protocolo no cambia: partición, aumento uniforme, pesos, cabeza, fase 1, tasas, máximos de épocas, parada, determinismo, lote y semillas. La configuración vive en `configs/m2_v3.yaml`, que hereda de `base.yaml`. `base.yaml` no se modifica.
+
+**Razón.** El 30 % final de las capas deja libres fracciones de parámetros distintas (ResNet50 72,9 %, DenseNet121 40,6 %, EfficientNetB0 75,5 %). Así no se separa el efecto de la arquitectura del de cuánto se adapta cada red. Descongelar toda la base iguala esa condición.
+
+**Qué no se toca.** Los runs, alias y artefactos de la v1 y de la v2. `final` y `seleccionado` siguen en la v2. Los runs nuevos van a `m2-entrenamiento-v3`, con checkpoints en `checkpoints-v3/`. La semilla representativa, cuando se seleccione, recibe el alias `v3-representativo`. La prueba de la v3, si se lanza, va a `m2-evaluacion-test-v3` y no se ha ejecutado al preparar este cambio.

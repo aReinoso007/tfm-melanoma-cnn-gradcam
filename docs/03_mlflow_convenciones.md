@@ -8,7 +8,9 @@ El objetivo es que **cualquier número o figura de la memoria pueda rastrearse h
 |---|---|---|
 | `m1-datos` | M1 | EDA, partición, pesos de clase |
 | `m2-entrenamiento` | M2 | 9 runs de la v1 (aumento selectivo), evaluados en validación. Cerrado. |
-| `m2-entrenamiento-v2` | M2 | 9 runs de la v2 (aumento uniforme, D19). Mismo nombre de run. |
+| `m2-entrenamiento-v2` | M2 | 9 runs de la v2 (aumento uniforme, D19). Mismo nombre de run. Cerrado. |
+| `m2-entrenamiento-v3` | M2 | 9 runs de la v3: fase 2 con el 100 % de la base descongelada. No sustituye a la v2. |
+| `m2-evaluacion-test-v3` | M2 | Prueba de la v3, una vez por red, cuando exista el alias `v3-representativo`. |
 | `m2-evaluacion-test` | M2 | 3 runs, uno por arquitectura, **ejecutados una sola vez** |
 | `m3-gradcam` | M3 | Mapas Grad-CAM, análisis de FN y anotación ABCDE |
 | `sandbox` | Todos | Pruebas y depuración. **Nada de aquí se cita en la memoria.** |
@@ -20,7 +22,9 @@ m1-split-v1
 m2-<arch>-s<seed>            p. ej. m2-resnet50-s42
 m2-seleccion                 decisión de la v1, dentro de `m2-entrenamiento`
 m2-seleccion-v2              decisión de la v2, dentro de `m2-entrenamiento-v2`
+m2-seleccion-v3              decisión de la v3, dentro de `m2-entrenamiento-v3`
 m2-test-<arch>               p. ej. m2-test-densenet121
+m2-test-v3-<arch>            prueba de la v3, dentro de `m2-evaluacion-test-v3`
 m3-gradcam-<arch>
 ```
 
