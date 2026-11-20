@@ -131,3 +131,79 @@ def lanzar_evaluacion_test(arch: str, cfg: dict, autor: str = "alex") -> dict:
         "fn_por_clase": por_clase,
         "fn_recuperados": int(fn.recuperado_umbral.sum()) if len(fn) else 0,
     }
+
+
+def lanzar_evaluacion_test_v3(arch: str, cfg: dict, autor: str = "alex") -> dict:
+    """Una pasada de prueba de la v3 y el bootstrap pareado contra la v2 de esa red.
+
+    Carga `models:/ham10000-<arch>@v3-representativo`. No toca los runs de la v2
+    ni los alias `final` y `seleccionado`. No se llama hasta cerrar la selección v3.
+    """
+    import mlflow
+    import pandas as pd
+    from mlflow.tracking import MlflowClient
+
+    from src.bootstrap import RUNS_PRUEBA, diferencia_pareada
+    from src.data import make_dataset, split_df
+    from src.metrics import calcular_metricas, matriz_confusion, prefijar, tabla_predicciones
+    from src.tracking import setup_mlflow, standard_tags
+    from src.training import figura_confusion
+
+    if cfg.get("config_version") != 3:
+        raise RuntimeError("La evaluación v3 lee configs/m2_v3.yaml.")
+    if arch not in RUNS_PRUEBA:
+        raise ValueError(arch)
+    setup_mlflow(cfg)
+    client = MlflowClient()
+    experimento = cfg["mlflow"]["experiments"]["m2_test_v3"]
+    exp = client.get_experiment_by_name(experimento)
+    if exp is None:
+        mlflow.set_experiment(experimento)
+        exp = client.get_experiment_by_name(experimento)
+    nombre = f"m2-test-v3-{arch}"
+    previos = client.search_runs([exp.experiment_id], max_results=100)
+    for run in previos:
+        run_name = run.info.run_name or run.data.tags.get("mlflow.runName")
+        if run_name == nombre and run.data.tags.get("test_evaluado") == "true":
+            raise RuntimeError(f"{nombre} ya tiene test_evaluado=true. La prueba no se repite.")
+
+    version = client.get_model_version_by_alias(f"ham10000-{arch}", "v3-representativo")
+    df = split_df("test")
+    ds = make_dataset("test", arch, training=False, batch_size=cfg["training"]["batch_size"])
+    modelo = mlflow.tensorflow.load_model(f"models:/ham10000-{arch}@v3-representativo")
+    probs = modelo.predict(ds, verbose=0)
+    if len(probs) != len(df):
+        raise RuntimeError(f"{len(df)} imágenes de prueba y {len(probs)} predicciones.")
+    y = df.label.to_numpy()
+    metricas = calcular_metricas(y, probs)
+    tabla = tabla_predicciones(df, probs)
+    v2 = pd.read_csv(client.download_artifacts(RUNS_PRUEBA[arch], "predicciones_test.csv"))
+    pareado = diferencia_pareada(tabla, v2)
+    lineas = [
+        f"# {arch}: v3 menos v2, argmax, bootstrap pareado",
+        "",
+        "| Métrica | Diferencia | Intervalo 95 % | Incluye el 0 |",
+        "|---|---|---|---|",
+    ]
+    for clave in ("macro_f1", "mel_sensitivity"):
+        d = pareado[clave]
+        lineas.append(
+            f"| {clave} | {d['punto']:.3f} | [{d['bajo']:.3f}; {d['alto']:.3f}] | {d['incluye_cero']} |"
+        )
+    mlflow.set_experiment(experimento)
+    tags = standard_tags(cfg, modulo="m2", fase="evaluacion-test", autor=autor,
+                         arch=arch, experimento="v3")
+    with mlflow.start_run(run_name=nombre, tags=tags):
+        mlflow.log_params({"run_id_modelo": version.run_id, "modelo_version": version.version,
+                           "run_id_v2": RUNS_PRUEBA[arch]})
+        mlflow.log_metrics({k: v for k, v in prefijar(metricas, "test").items() if v == v})
+        mlflow.log_figure(figura_confusion(matriz_confusion(y, probs.argmax(1)), f"{arch} v3"),
+                          "confusion_test_norm.png")
+        mlflow.log_text(tabla.to_csv(index=False), "predicciones_test.csv")
+        mlflow.log_text("\n".join(lineas) + "\n", "bootstrap_v3_vs_v2.md")
+        mlflow.set_tag("test_evaluado", "true")
+        mlflow.set_tag("estado", "final")
+        run_id = mlflow.active_run().info.run_id
+    return {"run_id": run_id, "arch": arch, "pareado": pareado,
+            "test_macro_f1": metricas["macro_f1"],
+            "test_mel_sensitivity": metricas["mel_sensitivity"]}

@@ -31,6 +31,21 @@ def test_una_lesion_entra_con_todas_sus_imagenes():
         assert cuenta_a == cuenta_b
 
 
+def test_la_diferencia_de_una_tabla_consigo_misma_incluye_el_cero():
+    from src.bootstrap import diferencia_pareada
+    filas = []
+    for i, clase in enumerate(["mel", "nv", "df", "bkl", "bcc", "akiec", "vasc"]):
+        filas.append({
+            "image_id": f"i{i}", "lesion_id": f"L{i}", "y_true": clase,
+            "y_pred": clase, "y_pred_umbral": clase,
+        })
+    tabla = _tabla(filas)
+    d = diferencia_pareada(tabla, tabla.copy(), n=30, semilla=3)
+    assert d["macro_f1"]["punto"] == 0
+    assert d["macro_f1"]["incluye_cero"] is True
+    assert d["mel_sensitivity"]["incluye_cero"] is True
+
+
 def test_la_misma_semilla_repite_el_intervalo():
     filas = []
     for i, clase in enumerate(["mel", "nv", "df", "bkl", "bcc", "akiec", "vasc"]):

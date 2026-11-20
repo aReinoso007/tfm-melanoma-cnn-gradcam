@@ -384,6 +384,105 @@ def _mover_alias_a_v2(client, resumen: dict, ganadora: str) -> None:
             client.set_registered_model_alias(nombre, "seleccionado", version)
 
 
+ALIAS_V3 = "v3-representativo"
+COMPARACION = ("macro_f1", "mel_sensitivity", "auc_mel", "balanced_accuracy",
+               "min_class_sensitivity", "frac_nv")
+
+
+def tabla_v2_contra_v3(resumen_v2: dict, resumen_v3: dict) -> str:
+    """Media ± desviación estándar (n−1) de validación, v2 junto a v3."""
+    lineas = [
+        "| Arquitectura | Versión | " + " | ".join(COMPARACION) + " |",
+        "|---|---|" + "---|" * len(COMPARACION),
+    ]
+    for arch in ARQUITECTURAS:
+        for nombre, resumen in (("v2", resumen_v2), ("v3", resumen_v3)):
+            celdas = [
+                f"{resumen[arch][m]['media']:.3f} ± {resumen[arch][m]['std']:.3f}"
+                for m in COMPARACION
+            ]
+            lineas.append(f"| {arch} | {nombre} | " + " | ".join(celdas) + " |")
+    return "\n".join(lineas) + "\n"
+
+
+def lanzar_seleccion_v3(cfg: dict, autor: str = "alex") -> dict:
+    """Selección de la v3. Alias `v3-representativo`. No toca `final` ni `seleccionado`.
+
+    No se ejecuta hasta que los nueve runs de `m2-entrenamiento-v3` estén en `estado=final`.
+    """
+    import mlflow
+    from mlflow.tracking import MlflowClient
+
+    from src.tracking import setup_mlflow, standard_tags
+
+    if cfg.get("config_version") != 3:
+        raise RuntimeError("La selección v3 lee configs/m2_v3.yaml.")
+    setup_mlflow(cfg)
+    client = MlflowClient()
+    experimento = cfg["mlflow"]["experiments"]["m2_train_v3"]
+    exp = client.get_experiment_by_name(experimento)
+    if exp is None:
+        raise RuntimeError(f"No existe el experimento {experimento}.")
+    previos = [
+        r for r in client.search_runs([exp.experiment_id], max_results=100)
+        if (r.info.run_name or r.data.tags.get("mlflow.runName")) == "m2-seleccion-v3"
+        and r.data.tags.get("estado") == "final"
+    ]
+    if previos:
+        raise RuntimeError(
+            "Ya hay un run m2-seleccion-v3 con estado=final "
+            f"({previos[0].info.run_id}). La selección no se repite."
+        )
+    runs = client.search_runs([exp.experiment_id], max_results=100)
+    filas = filas_desde_runs(runs, extras=EXTRAS_V2)
+    resumen = resumir(filas)
+    _promediar(resumen, EXTRAS_V2)
+    decision = decidir(resumen)
+    exp_v2 = client.get_experiment_by_name(cfg["mlflow"]["experiments"]["m2_train_v2"])
+    runs_v2 = client.search_runs([exp_v2.experiment_id], max_results=100)
+    resumen_v2 = resumir(filas_desde_runs(runs_v2, extras=EXTRAS_V2))
+    _promediar(resumen_v2, EXTRAS_V2)
+    comparacion = tabla_v2_contra_v3(resumen_v2, resumen)
+    texto = a_markdown_v2(resumen, decision).replace(
+        "# Selección en validación v2 (aumento uniforme)",
+        "# Selección en validación v3 (base descongelada al 100 %)",
+    )
+    mlflow.set_experiment(experimento)
+    tags = standard_tags(cfg, modulo="m2", fase="seleccion", autor=autor,
+                         aumento="uniforme", experimento="v3")
+    with mlflow.start_run(run_name="m2-seleccion-v3", tags=tags):
+        mlflow.log_text(texto, "seleccion.md")
+        mlflow.log_text(comparacion, "comparacion_v2_v3.md")
+        mlflow.set_tag("ganadora", decision["ganadora"])
+        mlflow.set_tag("motivo", decision["motivo"])
+        try:
+            _poner_alias_v3(client, resumen)
+            mlflow.set_tag("alias", "v3-representativo")
+        except Exception as exc:
+            mlflow.set_tag("alias", "error")
+            mlflow.log_text(f"{type(exc).__name__}: {exc}", "alias_error.txt")
+            print("AVISO: la decisión quedó guardada, pero el alias v3 no se pudo poner.")
+            print(type(exc).__name__, exc)
+        mlflow.set_tag("estado", "final")
+        run_id = mlflow.active_run().info.run_id
+    return {"run_id": run_id, "decision": decision, "markdown": texto, "comparacion": comparacion}
+
+
+def _poner_alias_v3(client, resumen: dict) -> None:
+    """Registra cada semilla representativa con el alias `v3-representativo`.
+
+    No borra ni mueve `final` ni `seleccionado`.
+    """
+    import mlflow
+
+    for arch in ARQUITECTURAS:
+        nombre = f"ham10000-{arch}"
+        version = mlflow.register_model(
+            f"runs:/{resumen[arch]['run_id_representativo']}/modelo", nombre
+        ).version
+        client.set_registered_model_alias(nombre, ALIAS_V3, version)
+
+
 def _registrar_alias(client, resumen: dict, ganadora: str) -> None:
     """Registra `runs:/<id>/modelo` y pone el alias. La ganadora lleva dos alias."""
     import mlflow

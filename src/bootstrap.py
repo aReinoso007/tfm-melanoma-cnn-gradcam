@@ -198,6 +198,36 @@ def a_markdown(resultado: dict) -> str:
     return "\n".join(lineas)
 
 
+def diferencia_pareada(tabla_nueva: pd.DataFrame, tabla_base: pd.DataFrame,
+                       n: int = N_REPLICAS, semilla: int = SEMILLA) -> dict:
+    """Diferencia argmax de `tabla_nueva` menos `tabla_base`, en las mismas réplicas.
+
+    Sirve para comparar la v3 con la v2 de la misma arquitectura. Devuelve el
+    puntual y el percentil 2,5–97,5 de macro-F1 y de sensibilidad en melanoma.
+    """
+    if not tabla_nueva.image_id.equals(tabla_base.image_id):
+        raise ValueError("Las dos tablas no tienen las mismas imágenes en el mismo orden.")
+    nueva, base = _codificar(tabla_nueva), _codificar(tabla_base)
+    punto_n = _medir(nueva["y"], nueva["argmax"], nueva["p_mel"])
+    punto_b = _medir(base["y"], base["argmax"], base["p_mel"])
+    acumulado = {0: [], 2: []}
+    for idx in replicas(tabla_nueva, n, semilla):
+        mn = _medir(nueva["y"][idx], nueva["argmax"][idx], nueva["p_mel"][idx])
+        mb = _medir(base["y"][idx], base["argmax"][idx], base["p_mel"][idx])
+        acumulado[0].append(mn[0] - mb[0])
+        acumulado[2].append(mn[2] - mb[2])
+    salida = {}
+    for nombre, j in (("macro_f1", 0), ("mel_sensitivity", 2)):
+        lo, hi = np.percentile(acumulado[j], [2.5, 97.5])
+        salida[nombre] = {
+            "punto": float(punto_n[j] - punto_b[j]),
+            "bajo": float(lo),
+            "alto": float(hi),
+            "incluye_cero": bool(lo <= 0 <= hi),
+        }
+    return salida
+
+
 def lanzar_bootstrap(cfg: dict, autor: str = "alex", n: int = N_REPLICAS,
                      semilla: int = SEMILLA) -> dict:
     """Crea el run `m2-bootstrap-test` y deja `bootstrap_test.md`. No toca los runs de prueba."""
