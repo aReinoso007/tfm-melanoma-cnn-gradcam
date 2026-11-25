@@ -26,6 +26,7 @@ m2-seleccion-v3              decisión de la v3, dentro de `m2-entrenamiento-v3`
 m2-test-<arch>               p. ej. m2-test-densenet121
 m2-test-v3-<arch>            prueba de la v3, dentro de `m2-evaluacion-test-v3`
 m3-gradcam-<arch>
+m3-gradcam-casos             `m3_casos.csv` consolidado (anotación manual)
 ```
 
 Las fases 1 y 2 del fine-tuning van en **el mismo run** (`m2-<arch>-s<seed>`). La fase se distingue por el prefijo de la métrica (`f1_` / `f2_`) y el paso es la época acumulada.
@@ -77,7 +78,8 @@ val_specificity_<clase>, val_auc_<clase>, val_ap_<clase>
 | `m2-test-<arch>` | `confusion_test_norm.png`, `confusion_test_umbral_norm.png`, `predicciones_test.csv`, `falsos_negativos_mel.csv` |
 | `m2-test-v3-<arch>` | Los mismos cuatro, más `bootstrap_v3.md`, `bootstrap_redes_v3.md` y `nota_prueba.txt`. Tag `analisis=complementario`. No sustituye a la prueba de la v2. |
 | `m2-bootstrap-test` | `bootstrap_test.md`. Run aparte. No modifica los runs `m2-test-*`. |
-| `m3-gradcam-<arch>` | Mapas por imagen (`gradcam/<clase>/<image_id>.png`), `fn_melanoma.csv`, `anotacion_abcde.csv`, `resumen_atajos.json` |
+| `m3-gradcam-<arch>` | Figuras por caso (`gradcam/<arch>/<FN\|TP>/<image_id>.png`), `m3_casos_<arch>.csv`. Parámetros: versión del modelo y capa. Métricas: cordura de Adebayo |
+| `m3-gradcam-casos` | `m3_casos.csv` (todas las redes, con las columnas de anotación vacías) |
 
 ## 7. Registro de modelos
 

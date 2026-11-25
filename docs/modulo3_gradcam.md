@@ -2,6 +2,13 @@
 
 **Responsable:** Christian Zhirzhan · **Experimento MLflow:** `m3-gradcam` · **Depende de:** M2
 
+> **Arranque vigente (nov. 2026).** El plan de abajo es el original; manda esta sección donde difieran.
+> - Modelos: `ham10000-<arch>@v3-representativo` (ResNet50 s42, DenseNet121 s42, EfficientNetB0 s123). Entradas: `predicciones_test.csv` y `falsos_negativos_mel.csv` de `m2-test-v3-<arch>` (`m2-evaluacion-test-v3`).
+> - Código: `src/explain.py` (Grad-CAM y Grad-CAM++ sobre el logit, no sobre la softmax; mapa 224×224 en [0, 1]; prueba de cordura de Adebayo et al., 2018) y `src/casos.py` (selección de casos y ejecución). Pruebas: `tests/test_explain.py`, `tests/test_casos.py`. Cuaderno: `notebooks/m3_01_gradcam.ipynb`.
+> - Casos: todos los FN de melanoma de ResNet50; 30 FN de DenseNet121 y de EfficientNetB0 estratificados por clase asignada (nv / bkl / otras: reparto proporcional con mínimo de 5 por estrato); 30 TP por red. FN y TP por argmax. En las muestras, una imagen por `lesion_id`. Semilla `gradcam.sampling_seed` (42).
+> - Un FN muestra dos filas (clase predicha y `mel`); un TP, una. Con la ReLU, el mapa de una clase con logit muy negativo puede salir vacío: se cuenta en `n_mapas_mel_vacios_*`.
+> - MLflow (`m3-gradcam`): un run `m3-gradcam-<arch>` por red (figuras en `gradcam/<arch>/<FN|TP>/<image_id>.png`, `m3_casos_<arch>.csv`, versión del modelo, cordura de Adebayo) y un run `m3-gradcam-casos` con `m3_casos.csv` consolidado. La anotación manual (`zona_atencion`, `criterios_abcde`, `comentario`) es posterior y no la hace el código.
+
 ## Objetivo
 
 Valorar si las decisiones de los modelos se apoyan en la lesión y en criterios dermatológicos, o en elementos ajenos a ella, con especial atención a los falsos negativos de melanoma.
