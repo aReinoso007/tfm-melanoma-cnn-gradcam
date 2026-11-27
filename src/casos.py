@@ -110,19 +110,15 @@ def _run_de_prueba(client, cfg: dict, arch: str):
     return candidatos[0]
 
 
-def lanzar_gradcam(arch: str, cfg: dict, salida: str | Path = "/content/m3_salida",
-                   autor: str = "christian", n_cordura: int = 5) -> dict:
-    """Carga el modelo y las entradas desde MLflow, genera las figuras y registra el run `m3-gradcam-<arch>`."""
+def _preparar(arch: str, cfg: dict):
+    """Comprueba el alias y la semilla, descarga las entradas, elige los casos y carga el modelo."""
     import keras
-    import matplotlib.pyplot as plt
     import mlflow
-    import tensorflow as tf
     from mlflow.tracking import MlflowClient
 
     from src.evaluation import RUNS_V3
-    from src.explain import (CAPAS_CONV, Explicador, cargar_imagen, figura_caso, n_capas_base_con_pesos,
-                             prueba_cordura)
-    from src.tracking import setup_mlflow, standard_tags
+    from src.explain import CAPAS_CONV, Explicador
+    from src.tracking import setup_mlflow
 
     setup_mlflow(cfg)
     client = MlflowClient()
@@ -146,6 +142,23 @@ def lanzar_gradcam(arch: str, cfg: dict, salida: str | Path = "/content/m3_salid
     capa = cfg["gradcam"]["last_conv_layer"][arch]
     assert capa == CAPAS_CONV[arch]
     expl = Explicador(modelo, arch, capa)
+
+    return client, version, run_pred, casos, modelo, expl, capa, semilla
+
+
+def lanzar_gradcam(arch: str, cfg: dict, salida: str | Path = "/content/m3_salida",
+                   autor: str = "christian", n_cordura: int = 20) -> dict:
+    """Carga el modelo y las entradas desde MLflow, genera las figuras y registra el run `m3-gradcam-<arch>`."""
+    import keras
+    import matplotlib.pyplot as plt
+    import mlflow
+    import tensorflow as tf
+
+    from src.explain import cargar_imagen, figura_caso, n_capas_base_con_pesos, prueba_cordura
+    from src.tracking import standard_tags
+
+    client, version, run_pred, casos, modelo, expl, capa, semilla = _preparar(arch, cfg)
+    nombre_modelo = f"ham10000-{arch}"
 
     carpeta = Path(salida) / "gradcam" / arch
     dif_max = 0.0
@@ -230,3 +243,27 @@ def publicar_casos(casos: pd.DataFrame, resultados: list[dict], cfg: dict, salid
         mlflow.log_artifact(str(ruta))
         mlflow.set_tag("estado", "final")
         return mlflow.active_run().info.run_id
+
+
+def repetir_cordura(arch: str, cfg: dict, run_id: str, n_cordura: int = 20) -> dict:
+    """Repite solo la prueba de cordura y la registra en un run `m3-gradcam-<arch>` ya existente.
+
+    Los valores nuevos sustituyen a los anteriores (mismas claves `adebayo_*`; MLflow conserva el historial).
+    El run queda con el tag `cordura=v2` (aleatorización en sitio, sin clonar el modelo).
+    """
+    import mlflow
+
+    from src.explain import cargar_imagen, prueba_cordura
+
+    _, version, _, casos, modelo, _, _, _ = _preparar(arch, cfg)
+    tps = casos[casos.tipo_caso == "TP"].image_id.head(n_cordura)
+    cordura = prueba_cordura(modelo, arch, [cargar_imagen(i, arch)[1] for i in tps], CLASES.index("mel"))
+    with mlflow.start_run(run_id=run_id):
+        mlflow.set_tag("cordura", "v2")
+        mlflow.set_tag("n_cordura", str(len(tps)))
+        for (metodo, f), rho in cordura["rho"].items():
+            nombre = f"{metodo.replace('+', 'p')}_f{int(f * 100)}"
+            if rho == rho:
+                mlflow.log_metric(f"adebayo_rho_{nombre}", rho)
+            mlflow.log_metric(f"adebayo_vacios_{nombre}", float(cordura["vacios"][(metodo, f)]))
+    return {"arch": arch, "run_id": run_id, "cordura": cordura, "n": len(tps)}

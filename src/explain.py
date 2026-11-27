@@ -17,6 +17,7 @@ Decisiones:
 """
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 import keras
@@ -114,38 +115,44 @@ def correlacion_rangos(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.corrcoef(ra, rb)[0, 1])
 
 
-def aleatorizar_base(model: keras.Model, semilla: int, ultimas: int | None = None) -> keras.Model:
-    """Copia del modelo con los kernels de la base re-sorteados (He normal) y los sesgos a cero.
+def _capas_aleatorizables(model: keras.Model) -> list:
+    return [l for l in model.layers
+            if not l.name.startswith("head_")
+            and not isinstance(l, keras.layers.BatchNormalization)
+            and any("kernel" in w.name or "bias" in w.name for w in l.weights)]
+
+
+@contextlib.contextmanager
+def base_aleatorizada(model: keras.Model, semilla: int, ultimas: int | None = None):
+    """Aleatoriza EN SITIO los kernels de la base (He normal) y pone los sesgos a cero; al salir del
+    bloque restaura los pesos originales exactamente.
 
     `ultimas=None`: toda la base. `ultimas=k`: solo las k capas con pesos más cercanas a la salida
     (aleatorización en cascada de Adebayo). La cabeza, las BatchNorm y las capas de normalización de
-    entrada no se tocan. El modelo original no se modifica.
+    entrada no se tocan. No se clona el modelo: `clone_model` no reproduce exactamente EfficientNetB0
+    (capa Normalization), y con la copia la fracción 0 no daba correlación 1.
     """
-    clon = keras.models.clone_model(model)
-    clon.set_weights(model.get_weights())
-    capas = [l for l in clon.layers
-             if not l.name.startswith("head_")
-             and not isinstance(l, keras.layers.BatchNormalization)
-             and any("kernel" in w.name or "bias" in w.name for w in l.weights)]
+    guardado = model.get_weights()
+    capas = _capas_aleatorizables(model)
     if ultimas is not None:
         capas = capas[len(capas) - ultimas:] if ultimas > 0 else []
     rng = np.random.default_rng(semilla)
-    for capa in capas:
-        for w in capa.weights:
-            if "kernel" in w.name:
-                forma = tuple(w.shape)
-                fan_in = max(1, int(np.prod(forma[:-1])))
-                w.assign(rng.normal(0.0, np.sqrt(2.0 / fan_in), size=forma).astype("float32"))
-            elif "bias" in w.name:
-                w.assign(np.zeros(tuple(w.shape), dtype="float32"))
-    return clon
+    try:
+        for capa in capas:
+            for w in capa.weights:
+                if "kernel" in w.name:
+                    forma = tuple(w.shape)
+                    fan_in = max(1, int(np.prod(forma[:-1])))
+                    w.assign(rng.normal(0.0, np.sqrt(2.0 / fan_in), size=forma).astype("float32"))
+                elif "bias" in w.name:
+                    w.assign(np.zeros(tuple(w.shape), dtype="float32"))
+        yield model
+    finally:
+        model.set_weights(guardado)
 
 
 def n_capas_base_con_pesos(model: keras.Model) -> int:
-    return sum(1 for l in model.layers
-               if not l.name.startswith("head_")
-               and not isinstance(l, keras.layers.BatchNormalization)
-               and any("kernel" in w.name or "bias" in w.name for w in l.weights))
+    return len(_capas_aleatorizables(model))
 
 
 def prueba_cordura(model: keras.Model, arch: str, imagenes_norm: list[np.ndarray], clase: int,
@@ -156,18 +163,19 @@ def prueba_cordura(model: keras.Model, arch: str, imagenes_norm: list[np.ndarray
     Devuelve {"rho": {(método, fracción): media}, "vacios": {(método, fracción): n}}. Un mapa
     aleatorizado vacío (todo ceros) no tiene correlación definida: se excluye de la media y se cuenta.
     """
-    original = Explicador(model, arch)
+    expl = Explicador(model, arch)
     total = n_capas_base_con_pesos(model)
+    originales = {m: [expl.mapa(x, clase, m) for x in imagenes_norm] for m in METODOS}
     resultado: dict = {"rho": {}, "vacios": {}}
     for f in fracciones:
         k = int(round(f * total))
-        alterado = Explicador(aleatorizar_base(model, semilla, ultimas=k), arch)
-        for metodo in METODOS:
-            rhos = [correlacion_rangos(original.mapa(x, clase, metodo), alterado.mapa(x, clase, metodo))
-                    for x in imagenes_norm]
-            validos = [r for r in rhos if r == r]
-            resultado["rho"][(metodo, f)] = float(np.mean(validos)) if validos else float("nan")
-            resultado["vacios"][(metodo, f)] = len(rhos) - len(validos)
+        with base_aleatorizada(model, semilla, ultimas=k):
+            for metodo in METODOS:
+                rhos = [correlacion_rangos(o, expl.mapa(x, clase, metodo))
+                        for o, x in zip(originales[metodo], imagenes_norm)]
+                validos = [r for r in rhos if r == r]
+                resultado["rho"][(metodo, f)] = float(np.mean(validos)) if validos else float("nan")
+                resultado["vacios"][(metodo, f)] = len(rhos) - len(validos)
     return resultado
 
 

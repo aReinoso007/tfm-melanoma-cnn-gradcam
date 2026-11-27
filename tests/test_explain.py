@@ -8,7 +8,7 @@ import pytest
 
 keras = pytest.importorskip("keras")
 
-from src.explain import (METODOS, Explicador, aleatorizar_base, correlacion_rangos,
+from src.explain import (METODOS, Explicador, base_aleatorizada, correlacion_rangos,
                          n_capas_base_con_pesos, superponer)
 from src.models import ARQUITECTURAS, build_model
 
@@ -72,20 +72,19 @@ def test_correlacion_de_rangos():
 
 @pytest.mark.parametrize("arch", ARQUITECTURAS)
 def test_cordura_adebayo_la_correlacion_cae_al_aleatorizar_la_base(arch):
-    """Con ultimas=0 el modelo es idéntico (rho=1); con la base entera aleatorizada, rho cae claramente."""
+    """Con ultimas=0 el modelo es idéntico (rho=1); con la base entera aleatorizada, rho cae."""
     keras.utils.set_random_seed(0)
     modelo = build_model(arch, weights=None)
-    original = Explicador(modelo, arch)
-    identico = Explicador(aleatorizar_base(modelo, 0, ultimas=0), arch)
-    alterado = Explicador(aleatorizar_base(modelo, 0), arch)
+    expl = Explicador(modelo, arch)
     imagenes = [_imagen(s) for s in range(4)]
-    clases = [int(np.argmax(original.logits(x))) for x in imagenes]   # clase con mapa no vacío
+    clases = [int(np.argmax(expl.logits(x))) for x in imagenes]   # clase con mapa no vacío
     for metodo in METODOS:
-        r_id = np.mean([correlacion_rangos(original.mapa(x, c, metodo), identico.mapa(x, c, metodo))
-                        for x, c in zip(imagenes, clases)])
-        rs = [correlacion_rangos(original.mapa(x, c, metodo), alterado.mapa(x, c, metodo))
-              for x, c in zip(imagenes, clases)]
-        assert all(original.mapa(x, c, metodo).max() > 0 for x, c in zip(imagenes, clases))
+        orig = [expl.mapa(x, c, metodo) for x, c in zip(imagenes, clases)]
+        assert all(o.max() > 0 for o in orig)
+        with base_aleatorizada(modelo, 0, ultimas=0):
+            r_id = np.mean([correlacion_rangos(o, expl.mapa(x, c, metodo)) for o, x, c in zip(orig, imagenes, clases)])
+        with base_aleatorizada(modelo, 0):
+            rs = [correlacion_rangos(o, expl.mapa(x, c, metodo)) for o, x, c in zip(orig, imagenes, clases)]
         # Un mapa aleatorizado vacío (constante) cuenta como mapa destruido: correlación 0.
         r_al = 0.0 if np.isnan(rs).all() else float(np.nanmean(rs))
         assert r_id == pytest.approx(1.0, abs=1e-4)
@@ -94,14 +93,18 @@ def test_cordura_adebayo_la_correlacion_cae_al_aleatorizar_la_base(arch):
         assert r_al < 0.9, f"{arch} {metodo}: rho={r_al:.2f} no cae tras aleatorizar la base"
 
 
-def test_aleatorizar_no_modifica_el_original_ni_la_cabeza():
-    modelo = build_model("resnet50", weights=None)
+@pytest.mark.parametrize("arch", ARQUITECTURAS)
+def test_base_aleatorizada_restaura_los_pesos_y_no_toca_la_cabeza(arch):
+    modelo = build_model(arch, weights=None)
     antes = [w.copy() for w in modelo.get_weights()]
-    clon = aleatorizar_base(modelo, 3)
+    cabeza = modelo.get_layer("head_softmax").kernel.numpy().copy()
+    capa = [l for l in modelo.layers if "kernel" in "".join(w.name for w in l.weights)
+            and not l.name.startswith("head_")][-1]
+    k_antes = capa.weights[0].numpy().copy()
+    with base_aleatorizada(modelo, 3):
+        assert not np.array_equal(capa.weights[0].numpy(), k_antes)
+        assert np.array_equal(modelo.get_layer("head_softmax").kernel.numpy(), cabeza)
     assert all(np.array_equal(a, b) for a, b in zip(antes, modelo.get_weights()))
-    assert np.array_equal(modelo.get_layer("head_softmax").kernel.numpy(), clon.get_layer("head_softmax").kernel.numpy())
-    assert not np.array_equal(modelo.get_layer("conv5_block3_1_conv").kernel.numpy(),
-                              clon.get_layer("conv5_block3_1_conv").kernel.numpy())
     assert n_capas_base_con_pesos(modelo) > 10
 
 
